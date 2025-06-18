@@ -1,5 +1,6 @@
-const User = require('./src/models/User');
-const database = require('./src/config/database');
+const User = require('../src/models/User');
+const database = require('../src/config/database');
+const { initializeModels } = require('../src/models/index');
 
 /**
  * Simple API Testing Script
@@ -13,6 +14,10 @@ async function testAPI() {
     // Connect to database
     await database.connect();
     console.log('✅ Database connected');
+
+    // Initialize models
+    await initializeModels();
+    console.log('✅ Models initialized');
 
     // Test 1: Create admin user if not exists
     console.log('\n📝 Test 1: Creating admin user...');

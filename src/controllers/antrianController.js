@@ -130,13 +130,30 @@ const getAllAntrian = asyncHandler(async (req, res) => {
 const getAntrianById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const antrian = await Antrian.findById(parseInt(id));
+  const antrian = await Antrian.findByPk(parseInt(id), {
+    include: [
+      {
+        model: require('../models/Poli'),
+        as: 'poli',
+        attributes: ['id', 'nama_poli', 'kode_poli']
+      },
+      {
+        model: require('../models/Dokter'),
+        as: 'dokter',
+        attributes: ['id', 'nama_dokter', 'spesialisasi']
+      }
+    ]
+  });
 
   if (!antrian) {
     throw notFoundError('Antrian tidak ditemukan');
   }
 
-  const responseData = success('Data antrian berhasil diambil', { antrian });
+  // Format response with lowercase status
+  const formattedAntrian = antrian.toJSON();
+  formattedAntrian.status = formattedAntrian.status_antrian.toLowerCase();
+
+  const responseData = success('Data antrian berhasil diambil', { antrian: formattedAntrian });
   send(res, responseData);
 });
 
@@ -148,18 +165,23 @@ const getAntrianById = asyncHandler(async (req, res) => {
 const createAntrian = asyncHandler(async (req, res) => {
   const antrianData = req.body;
 
-  const newAntrian = await Antrian.create(antrianData);
+  // Use createAntrian method with auto nomor generation
+  const newAntrian = await Antrian.createAntrian(antrianData);
+
+  // Format response with lowercase status
+  const formattedAntrian = newAntrian.toJSON();
+  formattedAntrian.status = formattedAntrian.status_antrian.toLowerCase();
 
   logger.info('Antrian created', {
     antrianId: newAntrian.id,
     nomor_antrian: newAntrian.nomor_antrian,
     nama_pasien: newAntrian.nama_pasien,
     poli_id: newAntrian.poli_id,
-    createdBy: req.user.username,
+    createdBy: req.user ? req.user.username : 'system',
     ip: req.ip
   });
 
-  const responseData = success('Antrian berhasil dibuat', { antrian: newAntrian }, 201);
+  const responseData = success('Antrian berhasil dibuat', { antrian: formattedAntrian }, 201);
   send(res, responseData);
 });
 
@@ -196,19 +218,20 @@ const updateAntrian = asyncHandler(async (req, res) => {
  */
 const updateAntrianStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const { status, dokter_id } = req.body;
 
-  const updatedAntrian = await Antrian.updateStatus(parseInt(id), status);
-
-  if (!updatedAntrian) {
-    throw notFoundError('Antrian tidak ditemukan');
+  const additionalData = {};
+  if (dokter_id) {
+    additionalData.dokter_id = dokter_id;
   }
+
+  const updatedAntrian = await Antrian.updateStatus(parseInt(id), status, additionalData);
 
   logger.info('Antrian status updated', {
     antrianId: updatedAntrian.id,
     nomor_antrian: updatedAntrian.nomor_antrian,
     newStatus: status,
-    updatedBy: req.user.username,
+    updatedBy: req.user ? req.user.username : 'system',
     ip: req.ip
   });
 
@@ -257,7 +280,7 @@ const deleteAntrian = asyncHandler(async (req, res) => {
  */
 const getAntrianByPoli = asyncHandler(async (req, res) => {
   const { poliId } = req.params;
-  const { status, date, with_details = true } = req.query;
+  const { status, date } = req.query;
 
   const filterDate = date || new Date().toISOString().split('T')[0];
 
@@ -267,7 +290,7 @@ const getAntrianByPoli = asyncHandler(async (req, res) => {
     filterDate
   );
 
-  const responseData = success('Data antrian poli berhasil diambil', { 
+  const responseData = success('Data antrian poli berhasil diambil', {
     antrian,
     filters: {
       poli_id: parseInt(poliId),
@@ -289,14 +312,42 @@ const getAntrianByDokter = asyncHandler(async (req, res) => {
 
   const filterDate = date || new Date().toISOString().split('T')[0];
 
-  const antrian = await Antrian.findByDokter(
-    parseInt(dokterId),
-    status || null,
-    filterDate
-  );
+  // Use database query since we don't have findByDokter method yet
+  const where = {
+    dokter_id: parseInt(dokterId),
+    tanggal_antrian: filterDate
+  };
 
-  const responseData = success('Data antrian dokter berhasil diambil', { 
-    antrian,
+  if (status) {
+    where.status_antrian = status.toUpperCase();
+  }
+
+  const antrian = await Antrian.findAll({
+    where,
+    include: [
+      {
+        model: require('../models/Poli'),
+        as: 'poli',
+        attributes: ['id', 'nama_poli', 'kode_poli']
+      },
+      {
+        model: require('../models/Dokter'),
+        as: 'dokter',
+        attributes: ['id', 'nama_dokter', 'spesialisasi']
+      }
+    ],
+    order: [['nomor_antrian', 'ASC']]
+  });
+
+  // Convert status to lowercase for API response
+  const formattedAntrian = antrian.map(item => {
+    const result = item.toJSON();
+    result.status = result.status_antrian.toLowerCase();
+    return result;
+  });
+
+  const responseData = success('Data antrian dokter berhasil diambil', {
+    antrian: formattedAntrian,
     filters: {
       dokter_id: parseInt(dokterId),
       status: status || 'semua',
@@ -350,16 +401,19 @@ const callNextAntrian = asyncHandler(async (req, res) => {
   }
 
   // Update status to 'dipanggil'
-  const calledAntrian = await Antrian.updateStatus(nextAntrian.id, 'dipanggil', {
-    dokter_id: dokter_id || nextAntrian.dokter_id
-  });
+  const additionalData = {};
+  if (dokter_id) {
+    additionalData.dokter_id = dokter_id;
+  }
+
+  const calledAntrian = await Antrian.updateStatus(nextAntrian.id, 'dipanggil', additionalData);
 
   logger.info('Antrian called', {
     antrianId: calledAntrian.id,
     nomor_antrian: calledAntrian.nomor_antrian,
     poli_id: parseInt(poliId),
     dokter_id: dokter_id,
-    calledBy: req.user.username,
+    calledBy: req.user ? req.user.username : 'system',
     ip: req.ip
   });
 
@@ -381,7 +435,7 @@ const getCurrentAntrian = asyncHandler(async (req, res) => {
     dokter_id ? parseInt(dokter_id) : null
   );
 
-  const responseData = success('Antrian saat ini', { antrian: currentAntrian });
+  const responseData = success('Antrian saat ini berhasil diambil', { antrian: currentAntrian });
   send(res, responseData);
 });
 
@@ -505,7 +559,7 @@ const getWaitingTimeEstimation = asyncHandler(async (req, res) => {
     throw notFoundError('Antrian tidak ditemukan');
   }
 
-  if (antrian.status !== 'menunggu') {
+  if (antrian.status_antrian !== 'MENUNGGU') {
     const errorResponse = error('Estimasi waktu hanya tersedia untuk antrian yang menunggu', null, 400);
     return send(res, errorResponse);
   }

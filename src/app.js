@@ -1,12 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const path = require('path');
 const config = require('./config/env');
 const database = require('./config/database');
 
 // Import middleware
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
+
+// Import model initialization
+const { initializeModels } = require('./models/index');
 
 // Import routes
 const apiRoutes = require('./routes/index');
@@ -92,6 +96,11 @@ app.use('/public', express.static('public', {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0
 }));
 
+// Admin Panel Static Files
+app.use('/admin', express.static('public/admin', {
+  maxAge: process.env.NODE_ENV === 'production' ? '12h' : 0
+}));
+
 /**
  * Basic Routes
  */
@@ -161,6 +170,13 @@ app.get('/health', async (req, res) => {
 app.use('/api', apiRoutes);
 
 /**
+ * Admin Panel Routes (SPA catch-all)
+ */
+app.get('/admin/*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/admin/index.html'));
+});
+
+/**
  * API Documentation endpoint (placeholder)
  */
 app.get('/api/docs', (req, res) => {
@@ -219,16 +235,51 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 /**
+ * Initialize Database and Models
+ */
+const initializeApp = async () => {
+  try {
+    logger.system('🚀 Initializing RSUD Queue System...');
+    
+    // Create database if it doesn't exist
+    await database.createDatabase();
+    logger.system('✅ Database created/verified');
+    
+    // Connect to database
+    await database.connect();
+    logger.system('✅ Database connected successfully');
+    
+    // Initialize all models
+    await initializeModels();
+    logger.system('✅ Models initialized successfully');
+    
+    // Sync database models (create tables if they don't exist)
+    await database.syncModels({ 
+      alter: process.env.NODE_ENV === 'development' // Only alter in development
+    });
+    logger.system('✅ Database models synchronized');
+    
+    logger.system('🎉 Application initialization completed successfully');
+    return true;
+  } catch (error) {
+    logger.error('❌ Failed to initialize application:', error);
+    throw error;
+  }
+};
+
+/**
  * Graceful Shutdown Handler
  */
 process.on('SIGTERM', () => {
   logger.system('SIGTERM received, shutting down gracefully');
-  process.exit(0);
+  database.close().finally(() => process.exit(0));
 });
 
 process.on('SIGINT', () => {
   logger.system('SIGINT received, shutting down gracefully');
-  process.exit(0);
+  database.close().finally(() => process.exit(0));
 });
 
+// Export both app and initialization function
 module.exports = app;
+module.exports.initializeApp = initializeApp;

@@ -1,7 +1,7 @@
-const Antrian = require('./src/models/Antrian');
-const Poli = require('./src/models/Poli');
-const Dokter = require('./src/models/Dokter');
-const database = require('./src/config/database');
+const Antrian = require('../src/models/Antrian');
+const Poli = require('../src/models/Poli');
+const Dokter = require('../src/models/Dokter');
+const database = require('../src/config/database');
 
 /**
  * Antrian API Testing Script
@@ -16,10 +16,15 @@ async function testAntrianAPI() {
     await database.connect();
     console.log('✅ Database connected');
 
+    // Initialize models
+    const { initializeModels } = require('../src/models/index');
+    await initializeModels();
+    console.log('✅ Models initialized');
+
     // Test 1: Create sample poli and dokter if not exists
     console.log('\n📝 Test 1: Setting up test data...');
     
-    let testPoli = await Poli.findByKode('TEST');
+    let testPoli = await Poli.findOne({ where: { kode_poli: 'TEST' } });
     if (!testPoli) {
       testPoli = await Poli.create({
         nama_poli: 'Poli Test',
@@ -31,7 +36,7 @@ async function testAntrianAPI() {
       console.log('✅ Test poli already exists');
     }
 
-    let testDokter = await Dokter.findOne({ poli_id: testPoli.id });
+    let testDokter = await Dokter.findOne({ where: { poli_id: testPoli.id } });
     if (!testDokter) {
       testDokter = await Dokter.create({
         nama_dokter: 'Dr. Test',
@@ -50,28 +55,31 @@ async function testAntrianAPI() {
     const antrianData = {
       poli_id: testPoli.id,
       dokter_id: testDokter.id,
-      nama_pasien: 'Pasien Test 1'
+      nama_pasien: 'Pasien Test 1',
+      tanggal_antrian: new Date().toISOString().split('T')[0]
     };
 
-    const newAntrian = await Antrian.create(antrianData);
+    const newAntrian = await Antrian.createAntrian(antrianData);
     console.log('✅ Antrian created successfully');
     console.log(`   ID: ${newAntrian.id}`);
     console.log(`   Nomor: ${newAntrian.nomor_antrian}`);
     console.log(`   Pasien: ${newAntrian.nama_pasien}`);
-    console.log(`   Status: ${newAntrian.status}`);
+    console.log(`   Status: ${newAntrian.status_antrian}`);
 
     // Test 3: Create more antrian for testing queue
     console.log('\n📝 Test 3: Creating more antrian...');
     
-    const antrian2 = await Antrian.create({
+    const antrian2 = await Antrian.createAntrian({
       poli_id: testPoli.id,
       dokter_id: testDokter.id,
-      nama_pasien: 'Pasien Test 2'
+      nama_pasien: 'Pasien Test 2',
+      tanggal_antrian: new Date().toISOString().split('T')[0]
     });
 
-    const antrian3 = await Antrian.create({
+    const antrian3 = await Antrian.createAntrian({
       poli_id: testPoli.id,
-      nama_pasien: 'Pasien Test 3' // Without dokter
+      nama_pasien: 'Pasien Test 3', // Without dokter
+      tanggal_antrian: new Date().toISOString().split('T')[0]
     });
 
     console.log('✅ Additional antrian created');
@@ -98,7 +106,7 @@ async function testAntrianAPI() {
       console.log('✅ Antrian called successfully');
       console.log(`   Nomor: ${calledAntrian.nomor_antrian}`);
       console.log(`   Status: ${calledAntrian.status}`);
-      console.log(`   Jam Panggil: ${calledAntrian.jam_panggil}`);
+      console.log(`   Jam Panggil: ${calledAntrian.waktu_panggil}`);
     }
 
     // Test 6: Get current antrian

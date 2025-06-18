@@ -1,376 +1,327 @@
+const { DataTypes } = require('sequelize');
 const BaseModel = require('./BaseModel');
-const { createError, validationError } = require('../middleware/errorHandler');
 
 /**
- * Dokter Model
- * Mengelola data dokter dan spesialisasi
+ * Dokter Model using Sequelize
+ * Mengelola data dokter yang bertugas di poliklinik
  */
 class Dokter extends BaseModel {
-  constructor() {
-    super('dokter');
+  static init(sequelize) {
+    return super.init(
+      {
+        id: {
+          type: DataTypes.INTEGER,
+          primaryKey: true,
+          autoIncrement: true,
+        },
+        nama_dokter: {
+          type: DataTypes.STRING(100),
+          allowNull: false,
+          validate: {
+            notEmpty: {
+              msg: 'Nama dokter tidak boleh kosong',
+            },
+            len: {
+              args: [2, 100],
+              msg: 'Nama dokter harus antara 2-100 karakter',
+            },
+          },
+        },
+        spesialisasi: {
+          type: DataTypes.STRING(100),
+          allowNull: true,
+          validate: {
+            len: {
+              args: [0, 100],
+              msg: 'Spesialisasi maksimal 100 karakter',
+            },
+          },
+        },
+        no_telp: {
+          type: DataTypes.STRING(20),
+          allowNull: true,
+          validate: {
+            isNumeric: {
+              msg: 'Nomor telepon harus berupa angka',
+            },
+          },
+        },
+        email: {
+          type: DataTypes.STRING(100),
+          allowNull: true,
+          validate: {
+            isEmail: {
+              msg: 'Format email tidak valid',
+            },
+          },
+        },
+        jadwal_praktek: {
+          type: DataTypes.JSON,
+          allowNull: true,
+          defaultValue: null,
+          comment: 'JSON format: {"senin": "08:00-12:00", "selasa": "14:00-17:00"}',
+        },
+        poli_id: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          references: {
+            model: 'poli',
+            key: 'id',
+          },
+          validate: {
+            notEmpty: {
+              msg: 'Poli harus dipilih',
+            },
+          },
+        },
+        aktif: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: true,
+        },
+        created_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
+        },
+        updated_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
+        },
+      },
+      {
+        sequelize,
+        modelName: 'Dokter',
+        tableName: 'dokter',
+        timestamps: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+        indexes: [
+          {
+            fields: ['poli_id'],
+          },
+          {
+            fields: ['aktif'],
+          },
+          {
+            fields: ['nama_dokter'],
+          },
+        ],
+      }
+    );
   }
 
-  /**
-   * Validate dokter data
-   * @param {Object} data - Dokter data to validate
-   * @param {boolean} isUpdate - Whether this is an update operation
-   * @returns {Object} Validation result
-   */
-  validateData(data, isUpdate = false) {
-    const errors = [];
+  // Instance methods
+  getJadwalHari(hari) {
+    if (!this.jadwal_praktek) return null;
+    return this.jadwal_praktek[hari.toLowerCase()] || null;
+  }
 
-    // Nama dokter validation
-    if (!isUpdate || data.hasOwnProperty('nama_dokter')) {
-      if (!data.nama_dokter || typeof data.nama_dokter !== 'string') {
-        errors.push('Nama dokter diperlukan dan harus berupa string');
-      } else if (data.nama_dokter.trim().length < 3) {
-        errors.push('Nama dokter minimal 3 karakter');
-      } else if (data.nama_dokter.trim().length > 100) {
-        errors.push('Nama dokter maksimal 100 karakter');
-      } else if (!/^[a-zA-Z\s.,-]+$/.test(data.nama_dokter.trim())) {
-        errors.push('Nama dokter hanya boleh mengandung huruf, spasi, titik, koma, dan tanda hubung');
-      }
-    }
+  async updateJadwal(jadwalBaru) {
+    const jadwalSaatIni = this.jadwal_praktek || {};
+    const jadwalUpdate = { ...jadwalSaatIni, ...jadwalBaru };
+    await this.update({ jadwal_praktek: jadwalUpdate });
+  }
 
-    // Spesialisasi validation
-    if (data.hasOwnProperty('spesialisasi')) {
-      if (data.spesialisasi && typeof data.spesialisasi !== 'string') {
-        errors.push('Spesialisasi harus berupa string');
-      } else if (data.spesialisasi && data.spesialisasi.trim().length > 100) {
-        errors.push('Spesialisasi maksimal 100 karakter');
-      }
-    }
-
-    // Poli ID validation
-    if (!isUpdate || data.hasOwnProperty('poli_id')) {
-      if (!data.poli_id) {
-        errors.push('Poli harus dipilih');
-      } else if (!Number.isInteger(data.poli_id) || data.poli_id <= 0) {
-        errors.push('Poli ID harus berupa angka positif');
-      }
-    }
-
-    // Aktif validation
-    if (data.hasOwnProperty('aktif')) {
-      if (typeof data.aktif !== 'boolean' && data.aktif !== 0 && data.aktif !== 1) {
-        errors.push('Status aktif harus berupa boolean atau 0/1');
-      }
-    }
-
+  getFullInfo() {
     return {
-      isValid: errors.length === 0,
-      errors
+      id: this.id,
+      nama_dokter: this.nama_dokter,
+      spesialisasi: this.spesialisasi,
+      no_telp: this.no_telp,
+      email: this.email,
+      jadwal_praktek: this.jadwal_praktek,
+      poli_id: this.poli_id,
+      aktif: this.aktif,
+      created_at: this.created_at,
+      updated_at: this.updated_at,
     };
   }
 
-  /**
-   * Check if poli exists
-   * @param {number} poliId - Poli ID
-   * @returns {Promise<boolean>} Poli exists
-   */
-  async checkPoliExists(poliId) {
-    const query = 'SELECT COUNT(*) as count FROM poli WHERE id = ?';
-    const result = await this.executeQuery(query, [poliId]);
-    return result[0].count > 0;
-  }
-
-  /**
-   * Create new dokter with validation
-   * @param {Object} data - Dokter data
-   * @returns {Promise<Object>} Created dokter
-   */
-  async create(data) {
-    // Clean and prepare data
-    const cleanData = {
-      nama_dokter: data.nama_dokter?.trim(),
-      spesialisasi: data.spesialisasi?.trim() || null,
-      poli_id: parseInt(data.poli_id),
-      aktif: data.aktif !== undefined ? data.aktif : true
-    };
-
-    // Validate data
-    const validation = this.validateData(cleanData);
-    if (!validation.isValid) {
-      throw validationError('Data dokter tidak valid', validation.errors);
-    }
-
-    // Check if poli exists
-    const poliExists = await this.checkPoliExists(cleanData.poli_id);
-    if (!poliExists) {
-      throw createError('Poli yang dipilih tidak ditemukan', 400);
-    }
-
-    return await super.create(cleanData);
-  }
-
-  /**
-   * Update dokter with validation
-   * @param {number} id - Dokter ID
-   * @param {Object} data - Updated data
-   * @returns {Promise<Object|null>} Updated dokter
-   */
-  async updateById(id, data) {
-    // Clean and prepare data
-    const cleanData = {};
-    
-    if (data.nama_dokter !== undefined) {
-      cleanData.nama_dokter = data.nama_dokter?.trim();
-    }
-    
-    if (data.spesialisasi !== undefined) {
-      cleanData.spesialisasi = data.spesialisasi?.trim() || null;
-    }
-    
-    if (data.poli_id !== undefined) {
-      cleanData.poli_id = parseInt(data.poli_id);
-    }
-    
-    if (data.aktif !== undefined) {
-      cleanData.aktif = data.aktif;
-    }
-
-    // Validate data
-    const validation = this.validateData(cleanData, true);
-    if (!validation.isValid) {
-      throw validationError('Data dokter tidak valid', validation.errors);
-    }
-
-    // Check if poli exists (only if poli_id is being updated)
-    if (cleanData.poli_id) {
-      const poliExists = await this.checkPoliExists(cleanData.poli_id);
-      if (!poliExists) {
-        throw createError('Poli yang dipilih tidak ditemukan', 400);
-      }
-    }
-
-    return await super.updateById(id, cleanData);
-  }
-
-  /**
-   * Get all active dokter
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} Active dokter list
-   */
-  async findAllActive(options = {}) {
-    return await this.findBy({ aktif: true }, { 
-      orderBy: 'nama_dokter ASC',
-      ...options 
+  // Static methods
+  static async findByPoli(poliId, options = {}) {
+    return await this.findAll({
+      where: { poli_id: poliId, aktif: true },
+      ...options,
     });
   }
 
-  /**
-   * Find dokter by poli ID
-   * @param {number} poliId - Poli ID
-   * @param {boolean} activeOnly - Only active dokter
-   * @returns {Promise<Array>} Dokter list
-   */
-  async findByPoliId(poliId, activeOnly = false) {
-    const conditions = { poli_id: poliId };
-    if (activeOnly) {
-      conditions.aktif = true;
-    }
-
-    return await this.findBy(conditions, { orderBy: 'nama_dokter ASC' });
+  static async findWithPoli(options = {}) {
+    return await this.findAll({
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli', 'aktif']
+        }
+      ],
+      where: { aktif: true },
+      ...options,
+    });
   }
 
-  /**
-   * Get dokter with poli information
-   * @param {number} id - Dokter ID
-   * @returns {Promise<Object|null>} Dokter with poli data
-   */
-  async findWithPoli(id) {
-    const query = `
-      SELECT 
-        d.*,
-        p.nama_poli,
-        p.kode_poli,
-        p.aktif as poli_aktif
-      FROM dokter d
-      LEFT JOIN poli p ON d.poli_id = p.id
-      WHERE d.id = ?
-    `;
+  static async search(query, options = {}) {
+    const { Op } = require('sequelize');
+    return await this.findAll({
+      where: {
+        [Op.or]: [
+          {
+            nama_dokter: {
+              [Op.iLike]: `%${query}%`
+            }
+          },
+          {
+            spesialisasi: {
+              [Op.iLike]: `%${query}%`
+            }
+          }
+        ],
+        aktif: true
+      },
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        }
+      ],
+      ...options,
+    });
+  }
+
+  static async getStatistics() {
+    const { Op } = require('sequelize');
     
-    const result = await this.executeQuery(query, [id]);
-    return result.length > 0 ? result[0] : null;
-  }
+    const total = await this.count();
+    const aktif = await this.count({ where: { aktif: true } });
+    const nonAktif = await this.count({ where: { aktif: false } });
+    
+    // Statistics per poli
+    const perPoli = await this.findAll({
+      attributes: [
+        'poli_id',
+        [this.sequelize.fn('COUNT', this.sequelize.col('Dokter.id')), 'jumlah_dokter']
+      ],
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['nama_poli', 'kode_poli']
+        }
+      ],
+      group: ['Dokter.poli_id', 'poli.id', 'poli.nama_poli', 'poli.kode_poli'],
+      raw: false
+    });
 
-  /**
-   * Get all dokter with poli information
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} Dokter list with poli data
-   */
-  async findAllWithPoli(options = {}) {
-    const { 
-      activeOnly = false, 
-      poliId = null, 
-      limit = null, 
-      offset = 0,
-      orderBy = 'd.nama_dokter ASC'
-    } = options;
-
-    let whereConditions = [];
-    let params = [];
-
-    if (activeOnly) {
-      whereConditions.push('d.aktif = ?');
-      params.push(true);
-    }
-
-    if (poliId) {
-      whereConditions.push('d.poli_id = ?');
-      params.push(poliId);
-    }
-
-    let query = `
-      SELECT 
-        d.*,
-        p.nama_poli,
-        p.kode_poli,
-        p.aktif as poli_aktif
-      FROM dokter d
-      LEFT JOIN poli p ON d.poli_id = p.id
-    `;
-
-    if (whereConditions.length > 0) {
-      query += ` WHERE ${whereConditions.join(' AND ')}`;
-    }
-
-    query += ` ORDER BY ${orderBy}`;
-
-    if (limit) {
-      query += ` LIMIT ${limit} OFFSET ${offset}`;
-    }
-
-    return await this.executeQuery(query, params);
-  }
-
-  /**
-   * Search dokter by name or specialization
-   * @param {string} searchTerm - Search term
-   * @param {boolean} activeOnly - Only search active dokter
-   * @param {number} poliId - Filter by poli ID
-   * @returns {Promise<Array>} Search results
-   */
-  async search(searchTerm, activeOnly = false, poliId = null) {
-    if (!searchTerm || typeof searchTerm !== 'string') {
-      return [];
-    }
-
-    const searchPattern = `%${searchTerm.trim()}%`;
-    let whereConditions = ['(d.nama_dokter LIKE ? OR d.spesialisasi LIKE ?)'];
-    let params = [searchPattern, searchPattern];
-
-    if (activeOnly) {
-      whereConditions.push('d.aktif = ?');
-      params.push(true);
-    }
-
-    if (poliId) {
-      whereConditions.push('d.poli_id = ?');
-      params.push(poliId);
-    }
-
-    const query = `
-      SELECT 
-        d.*,
-        p.nama_poli,
-        p.kode_poli
-      FROM dokter d
-      LEFT JOIN poli p ON d.poli_id = p.id
-      WHERE ${whereConditions.join(' AND ')}
-      ORDER BY d.nama_dokter ASC
-    `;
-
-    return await this.executeQuery(query, params);
-  }
-
-  /**
-   * Get dokter statistics
-   * @returns {Promise<Object>} Statistics
-   */
-  async getStatistics() {
-    const totalDokter = await this.count();
-    const activeDokter = await this.count({ aktif: true });
-    const inactiveDokter = totalDokter - activeDokter;
-
-    // Get dokter count by poli
-    const poliStatsQuery = `
-      SELECT 
-        p.nama_poli,
-        p.kode_poli,
-        COUNT(d.id) as jumlah_dokter
-      FROM poli p
-      LEFT JOIN dokter d ON p.id = d.poli_id AND d.aktif = true
-      WHERE p.aktif = true
-      GROUP BY p.id, p.nama_poli, p.kode_poli
-      ORDER BY p.nama_poli ASC
-    `;
-    const poliStats = await this.executeQuery(poliStatsQuery);
+    // Statistics by specialization
+    const perSpesialisasi = await this.findAll({
+      attributes: [
+        'spesialisasi',
+        [this.sequelize.fn('COUNT', this.sequelize.col('id')), 'jumlah']
+      ],
+      where: {
+        spesialisasi: { [Op.ne]: null },
+        aktif: true
+      },
+      group: ['spesialisasi'],
+      order: [[this.sequelize.fn('COUNT', this.sequelize.col('id')), 'DESC']],
+      raw: true
+    });
 
     return {
-      total: totalDokter,
-      active: activeDokter,
-      inactive: inactiveDokter,
-      byPoli: poliStats
+      total,
+      aktif,
+      nonAktif,
+      perPoli: perPoli.map(item => ({
+        poli_id: item.poli_id,
+        nama_poli: item.poli?.nama_poli || 'Unknown',
+        kode_poli: item.poli?.kode_poli || 'Unknown',
+        jumlah_dokter: parseInt(item.get('jumlah_dokter')) || 0
+      })),
+      perSpesialisasi: perSpesialisasi.map(item => ({
+        spesialisasi: item.spesialisasi,
+        jumlah: parseInt(item.jumlah) || 0
+      }))
     };
   }
 
-  /**
-   * Check if dokter can be deleted
-   * @param {number} id - Dokter ID
-   * @returns {Promise<boolean>} Can be deleted
-   */
-  async canBeDeleted(id) {
-    // Check if dokter has associated antrian
-    const antrianQuery = 'SELECT COUNT(*) as count FROM antrian WHERE dokter_id = ?';
-    const antrianResult = await this.executeQuery(antrianQuery, [id]);
-    const hasAntrian = antrianResult[0].count > 0;
-
-    return !hasAntrian;
+  static async findBySpecialization(spesialisasi, options = {}) {
+    return await this.findAll({
+      where: {
+        spesialisasi: {
+          [sequelize.Op.iLike]: `%${spesialisasi}%`,
+        },
+        aktif: true,
+      },
+      ...options,
+    });
   }
 
-  /**
-   * Safe delete - check dependencies before deleting
-   * @param {number} id - Dokter ID
-   * @returns {Promise<boolean>} True if deleted, false if not found
-   */
-  async safeDelete(id) {
-    const canDelete = await this.canBeDeleted(id);
-    if (!canDelete) {
-      throw createError('Dokter tidak dapat dihapus karena masih memiliki antrian', 400);
-    }
-
-    return await this.deleteById(id);
+  static async searchByName(nama, options = {}) {
+    const { Op } = require('sequelize');
+    return await this.findAll({
+      where: {
+        nama_dokter: {
+          [Op.iLike]: `%${nama}%`,
+        },
+        aktif: true,
+      },
+      ...options,
+    });
   }
 
-  /**
-   * Get count of dokter by poli
-   * @param {number} poliId - Poli ID
-   * @param {boolean} activeOnly - Only count active dokter
-   * @returns {Promise<number>} Count
-   */
-  async countByPoli(poliId, activeOnly = false) {
-    const conditions = { poli_id: poliId };
-    if (activeOnly) {
-      conditions.aktif = true;
-    }
-    return await this.count(conditions);
+  static async getWithPoli(options = {}) {
+    return await this.findAll({
+      include: [
+        {
+          association: 'poli',
+          required: false,
+        },
+      ],
+      where: { aktif: true },
+      ...options,
+    });
   }
 
-  /**
-   * Toggle dokter status
-   * @param {number} id - Dokter ID
-   * @returns {Promise<Object|null>} Updated dokter
-   */
-  async toggleStatus(id) {
-    const dokter = await this.findById(id);
-    if (!dokter) {
-      throw createError('Dokter tidak ditemukan', 404);
+  static async countByPoli(poliId) {
+    return await this.count({
+      where: { poli_id: poliId, aktif: true },
+    });
+  }
+
+  // Validation methods
+  async validateBeforeDelete() {
+    // Check if doctor has active queues
+    const { models } = require('./index');
+    const activeQueues = await models.Antrian.count({
+      where: {
+        dokter_id: this.id,
+        status: ['menunggu', 'dipanggil'],
+      },
+    });
+
+    if (activeQueues > 0) {
+      throw new Error('Tidak dapat menghapus dokter yang masih memiliki antrian aktif');
     }
 
-    const newStatus = !dokter.aktif;
-    return await this.updateById(id, { aktif: newStatus });
+    return true;
+  }
+
+  // Associations
+  static associate(models) {
+    // Dokter belongs to Poli
+    this.belongsTo(models.Poli, {
+      foreignKey: 'poli_id',
+      as: 'poli'
+    });
+
+    // Dokter has many Antrian
+    this.hasMany(models.Antrian, {
+      foreignKey: 'dokter_id',
+      as: 'antrian'
+    });
   }
 }
 
-module.exports = new Dokter();
+module.exports = Dokter;

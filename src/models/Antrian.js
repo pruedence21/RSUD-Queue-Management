@@ -1,487 +1,595 @@
+const { DataTypes } = require('sequelize');
 const BaseModel = require('./BaseModel');
-const { createError, validationError } = require('../middleware/errorHandler');
 
 /**
- * Antrian Model
+ * Antrian Model using Sequelize
  * Mengelola data antrian pasien
  */
 class Antrian extends BaseModel {
-  constructor() {
-    super('antrian');
+  static init(sequelize) {
+    return super.init({
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      nomor_antrian: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        validate: {
+          notEmpty: {
+            msg: 'Nomor antrian tidak boleh kosong'
+          }
+        }
+      },
+      poli_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'poli',
+          key: 'id'
+        },
+        validate: {
+          notNull: {
+            msg: 'Poli ID diperlukan'
+          },
+          isInt: {
+            msg: 'Poli ID harus berupa angka'
+          }
+        }
+      },
+      dokter_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'dokter',
+          key: 'id'
+        },
+        validate: {
+          isInt: {
+            msg: 'Dokter ID harus berupa angka'
+          }
+        }
+      },
+      nama_pasien: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        validate: {
+          notEmpty: {
+            msg: 'Nama pasien tidak boleh kosong'
+          },
+          len: {
+            args: [2, 100],
+            msg: 'Nama pasien harus antara 2-100 karakter'
+          }
+        }
+      },
+      tanggal_antrian: {
+        type: DataTypes.DATEONLY,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+        validate: {
+          notNull: {
+            msg: 'Tanggal antrian diperlukan'
+          },
+          isDate: {
+            msg: 'Tanggal antrian harus berupa tanggal yang valid'
+          }
+        }
+      },
+      waktu_checkin: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      waktu_panggil: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      waktu_selesai: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      status_antrian: {
+        type: DataTypes.ENUM('MENUNGGU', 'DIPANGGIL', 'SEDANG_DILAYANI', 'SELESAI', 'TIDAK_HADIR', 'BATAL'),
+        allowNull: false,
+        defaultValue: 'MENUNGGU',
+        validate: {
+          notEmpty: {
+            msg: 'Status antrian tidak boleh kosong'
+          },
+          isIn: {
+            args: [['MENUNGGU', 'DIPANGGIL', 'SEDANG_DILAYANI', 'SELESAI', 'TIDAK_HADIR', 'BATAL']],
+            msg: 'Status antrian tidak valid'
+          }
+        }
+      },
+      prioritas: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false
+      },
+      keterangan: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      }
+    }, {
+      sequelize,
+      modelName: 'Antrian',
+      tableName: 'antrian',
+      timestamps: true,
+      underscored: true,
+      createdAt: 'created_at',
+      updatedAt: 'updated_at'
+    });
   }
 
-  /**
-   * Validate antrian data
-   * @param {Object} data - Antrian data to validate
-   * @param {boolean} isUpdate - Whether this is an update operation
-   * @returns {Object} Validation result
-   */
-  validateData(data, isUpdate = false) {
-    const errors = [];
+  // Instance methods
+  async panggil() {
+    this.status_antrian = 'DIPANGGIL';
+    this.waktu_panggil = new Date();
+    await this.save();
+    return this;
+  }
 
-    // Nomor antrian validation (only for updates, auto-generated for create)
-    if (isUpdate && data.hasOwnProperty('nomor_antrian')) {
-      if (!data.nomor_antrian || typeof data.nomor_antrian !== 'string') {
-        errors.push('Nomor antrian diperlukan dan harus berupa string');
-      } else if (data.nomor_antrian.trim().length < 1) {
-        errors.push('Nomor antrian tidak boleh kosong');
-      } else if (data.nomor_antrian.trim().length > 20) {
-        errors.push('Nomor antrian maksimal 20 karakter');
-      }
+  async mulaiLayanan() {
+    this.status_antrian = 'SEDANG_DILAYANI';
+    await this.save();
+    return this;
+  }
+
+  async selesai() {
+    this.status_antrian = 'SELESAI';
+    this.waktu_selesai = new Date();
+    await this.save();
+    return this;
+  }
+
+  async batal(keterangan = null) {
+    this.status_antrian = 'BATAL';
+    if (keterangan) {
+      this.keterangan = keterangan;
     }
+    await this.save();
+    return this;
+  }
 
-    // Poli ID validation
-    if (!isUpdate || data.hasOwnProperty('poli_id')) {
-      if (!isUpdate && !data.poli_id) {
-        errors.push('Poli ID diperlukan');
-      } else if (data.poli_id && (!Number.isInteger(data.poli_id) || data.poli_id <= 0)) {
-        errors.push('Poli ID harus berupa angka positif');
-      }
-    }
+  async tidakHadir() {
+    this.status_antrian = 'TIDAK_HADIR';
+    await this.save();
+    return this;
+  }
 
-    // Dokter ID validation (optional)
-    if (data.hasOwnProperty('dokter_id') && data.dokter_id !== null) {
-      if (!Number.isInteger(data.dokter_id) || data.dokter_id <= 0) {
-        errors.push('Dokter ID harus berupa angka positif');
-      }
-    }
+  // Static methods
+  static async findByTanggal(tanggal) {
+    return this.findAll({
+      where: { tanggal_antrian: tanggal },
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        },
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [['nomor_antrian', 'ASC']]
+    });
+  }
 
-    // Nama pasien validation
-    if (!isUpdate || data.hasOwnProperty('nama_pasien')) {
-      if (!data.nama_pasien || typeof data.nama_pasien !== 'string') {
-        errors.push('Nama pasien diperlukan dan harus berupa string');
-      } else if (data.nama_pasien.trim().length < 2) {
-        errors.push('Nama pasien minimal 2 karakter');
-      } else if (data.nama_pasien.trim().length > 100) {
-        errors.push('Nama pasien maksimal 100 karakter');
-      }
-    }
+  static async findByPoliAndTanggal(poli_id, tanggal) {
+    return this.findAll({
+      where: { 
+        poli_id,
+        tanggal_antrian: tanggal 
+      },
+      include: [
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [['nomor_antrian', 'ASC']]
+    });
+  }
 
-    // Status validation
-    if (data.hasOwnProperty('status')) {
-      const validStatuses = ['menunggu', 'dipanggil', 'selesai', 'terlewat'];
-      if (!validStatuses.includes(data.status)) {
-        errors.push('Status harus berupa: menunggu, dipanggil, selesai, atau terlewat');
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors
+  static async findMenunggu(poli_id = null) {
+    const where = { 
+      status_antrian: 'MENUNGGU',
+      tanggal_antrian: new Date().toISOString().split('T')[0] // Today
     };
-  }
-
-  /**
-   * Generate nomor antrian for poli
-   * @param {number} poliId - Poli ID
-   * @param {string} date - Date string (YYYY-MM-DD)
-   * @returns {Promise<string>} Generated antrian number
-   */
-  async generateNomorAntrian(poliId, date = null) {
-    try {
-      if (!date) {
-        date = new Date().toISOString().split('T')[0]; // Today's date
-      }
-
-      // Get poli code
-      const poliQuery = 'SELECT kode_poli FROM poli WHERE id = ?';
-      const poliResult = await this.executeQuery(poliQuery, [poliId]);
-      
-      if (poliResult.length === 0) {
-        throw createError('Poli tidak ditemukan', 404);
-      }
-
-      const kodePoli = poliResult[0].kode_poli;
-
-      // Count existing antrian for today
-      const countQuery = `
-        SELECT COUNT(*) as count 
-        FROM antrian 
-        WHERE poli_id = ? AND DATE(jam_daftar) = ?
-      `;
-      const countResult = await this.executeQuery(countQuery, [poliId, date]);
-      const nextNumber = countResult[0].count + 1;
-
-      // Format: KODE-YYYYMMDD-XXX (e.g., UMUM-20250615-001)
-      const dateFormatted = date.replace(/-/g, '');
-      const nomorAntrian = `${kodePoli}-${dateFormatted}-${nextNumber.toString().padStart(3, '0')}`;
-
-      return nomorAntrian;
-    } catch (error) {
-      throw createError('Gagal generate nomor antrian: ' + error.message);
-    }
-  }
-
-  /**
-   * Create new antrian with validation
-   * @param {Object} data - Antrian data
-   * @returns {Promise<Object>} Created antrian
-   */
-  async create(data) {
-    // Clean and prepare data
-    const cleanData = {
-      poli_id: parseInt(data.poli_id),
-      dokter_id: data.dokter_id ? parseInt(data.dokter_id) : null,
-      nama_pasien: data.nama_pasien?.trim(),
-      status: data.status || 'menunggu'
-    };
-
-    // Validate data
-    const validation = this.validateData(cleanData);
-    if (!validation.isValid) {
-      console.log('Validation failed for data:', cleanData);
-      console.log('Validation errors:', validation.errors);
-      throw validationError('Data antrian tidak valid', validation.errors);
-    }
-
-    // Verify poli exists and is active
-    const poliQuery = 'SELECT id, nama_poli, aktif FROM poli WHERE id = ?';
-    const poliResult = await this.executeQuery(poliQuery, [cleanData.poli_id]);
     
-    if (poliResult.length === 0) {
-      throw createError('Poli tidak ditemukan', 404);
+    if (poli_id) {
+      where.poli_id = poli_id;
     }
 
-    if (!poliResult[0].aktif) {
-      throw createError('Poli tidak aktif', 400);
+    return this.findAll({
+      where,
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        },
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [
+        ['prioritas', 'DESC'],
+        ['created_at', 'ASC']
+      ]
+    });
+  }
+
+  static async getNextNumber(poli_id, tanggal) {
+    const Poli = require('./Poli');
+    const poli = await Poli.findByPk(poli_id);
+    
+    if (!poli) {
+      throw new Error('Poli tidak ditemukan');
     }
 
-    // Verify dokter exists and is active (if provided)
-    if (cleanData.dokter_id) {
-      const dokterQuery = 'SELECT id, nama_dokter, aktif, poli_id FROM dokter WHERE id = ?';
-      const dokterResult = await this.executeQuery(dokterQuery, [cleanData.dokter_id]);
-      
-      if (dokterResult.length === 0) {
-        throw createError('Dokter tidak ditemukan', 404);
-      }
+    const lastAntrian = await this.findOne({
+      where: {
+        poli_id,
+        tanggal_antrian: tanggal
+      },
+      order: [['nomor_antrian', 'DESC']]
+    });
 
-      if (!dokterResult[0].aktif) {
-        throw createError('Dokter tidak aktif', 400);
-      }
-
-      if (dokterResult[0].poli_id !== cleanData.poli_id) {
-        throw createError('Dokter tidak sesuai dengan poli', 400);
-      }
+    let nextNumber = 1;
+    if (lastAntrian) {
+      // Extract number from last queue number (e.g., "A001" -> 1)
+      const lastNumber = parseInt(lastAntrian.nomor_antrian.slice(-3)) || 0;
+      nextNumber = lastNumber + 1;
     }
 
+    // Format: [KODE_POLI][001]
+    const nomorAntrian = `${poli.kode_poli}${nextNumber.toString().padStart(3, '0')}`;
+    
+    return nomorAntrian;
+  }
+
+  static async createAntrian(data) {
+    const { poli_id, tanggal_antrian } = data;
+    
     // Generate nomor antrian
-    cleanData.nomor_antrian = await this.generateNomorAntrian(cleanData.poli_id);
-    cleanData.jam_daftar = new Date();
-
-    return await super.create(cleanData);
+    const nomorAntrian = await this.getNextNumber(poli_id, tanggal_antrian);
+    
+    return this.create({
+      ...data,
+      nomor_antrian: nomorAntrian,
+      waktu_checkin: new Date()
+    });
   }
 
-  /**
-   * Update antrian status
-   * @param {number} id - Antrian ID
-   * @param {string} status - New status
-   * @param {Object} additionalData - Additional data to update
-   * @returns {Promise<Object|null>} Updated antrian
-   */
-  async updateStatus(id, status, additionalData = {}) {
-    const validStatuses = ['menunggu', 'dipanggil', 'selesai', 'terlewat'];
-    if (!validStatuses.includes(status)) {
-      throw createError('Status tidak valid', 400);
+  // Additional static methods required by tests
+  static async updateStatus(id, status, additionalData = {}) {
+    const antrian = await this.findByPk(id);
+    
+    if (!antrian) {
+      throw new Error('Antrian tidak ditemukan');
     }
 
-    const updateData = { status, ...additionalData };
-
-    // Set jam_panggil when status is 'dipanggil'
-    if (status === 'dipanggil') {
-      updateData.jam_panggil = new Date();
+    // Validate status
+    const validStatuses = ['MENUNGGU', 'DIPANGGIL', 'SEDANG_DILAYANI', 'SELESAI', 'TIDAK_HADIR', 'BATAL'];
+    const upperStatus = status.toUpperCase();
+    
+    if (!validStatuses.includes(upperStatus)) {
+      throw new Error('Status antrian tidak valid');
     }
 
-    return await this.updateById(id, updateData);
+    // Update timestamps based on status
+    const updateData = {
+      status_antrian: upperStatus,
+      ...additionalData
+    };
+
+    switch (upperStatus) {
+      case 'DIPANGGIL':
+        updateData.waktu_panggil = new Date();
+        break;
+      case 'SEDANG_DILAYANI':
+        if (!antrian.waktu_panggil) {
+          updateData.waktu_panggil = new Date();
+        }
+        break;
+      case 'SELESAI':
+        updateData.waktu_selesai = new Date();
+        break;
+    }
+
+    await antrian.update(updateData);
+    
+    // Return with lowercase status for API consistency
+    const result = antrian.toJSON();
+    result.status = result.status_antrian.toLowerCase();
+    return result;
   }
 
-  /**
-   * Get antrian by poli with details
-   * @param {number} poliId - Poli ID
-   * @param {string} status - Filter by status (optional)
-   * @param {string} date - Filter by date (optional)
-   * @returns {Promise<Array>} Antrian list with details
-   */
-  async findByPoliWithDetails(poliId, status = null, date = null) {
-    let whereClause = 'a.poli_id = ?';
-    const params = [poliId];
-
-    if (status) {
-      whereClause += ' AND a.status = ?';
-      params.push(status);
-    }
-
-    if (date) {
-      whereClause += ' AND DATE(a.jam_daftar) = ?';
-      params.push(date);
-    }
-
-    const query = `
-      SELECT 
-        a.*,
-        p.nama_poli,
-        p.kode_poli,
-        d.nama_dokter,
-        d.spesialisasi
-      FROM antrian a
-      LEFT JOIN poli p ON a.poli_id = p.id
-      LEFT JOIN dokter d ON a.dokter_id = d.id
-      WHERE ${whereClause}
-      ORDER BY a.jam_daftar ASC
-    `;
-
-    return await this.executeQuery(query, params);
-  }
-
-  /**
-   * Get antrian by dokter
-   * @param {number} dokterId - Dokter ID
-   * @param {string} status - Filter by status (optional)
-   * @param {string} date - Filter by date (optional)
-   * @returns {Promise<Array>} Antrian list
-   */
-  async findByDokter(dokterId, status = null, date = null) {
-    let whereClause = 'a.dokter_id = ?';
-    const params = [dokterId];
-
-    if (status) {
-      whereClause += ' AND a.status = ?';
-      params.push(status);
-    }
-
-    if (date) {
-      whereClause += ' AND DATE(a.jam_daftar) = ?';
-      params.push(date);
-    }
-
-    const query = `
-      SELECT 
-        a.*,
-        p.nama_poli,
-        p.kode_poli,
-        d.nama_dokter,
-        d.spesialisasi
-      FROM antrian a
-      LEFT JOIN poli p ON a.poli_id = p.id
-      LEFT JOIN dokter d ON a.dokter_id = d.id
-      WHERE ${whereClause}
-      ORDER BY a.jam_daftar ASC
-    `;
-
-    return await this.executeQuery(query, params);
-  }
-
-  /**
-   * Get next antrian number for calling
-   * @param {number} poliId - Poli ID
-   * @param {number} dokterId - Dokter ID (optional)
-   * @returns {Promise<Object|null>} Next antrian or null
-   */
-  async getNextAntrian(poliId, dokterId = null) {
-    let whereClause = 'poli_id = ? AND status = ?';
-    const params = [poliId, 'menunggu'];
+  static async getCurrentAntrian(poliId, dokterId = null) {
+    const where = {
+      poli_id: poliId,
+      status_antrian: ['DIPANGGIL', 'SEDANG_DILAYANI'],
+      tanggal_antrian: new Date().toISOString().split('T')[0]
+    };
 
     if (dokterId) {
-      whereClause += ' AND (dokter_id = ? OR dokter_id IS NULL)';
-      params.push(dokterId);
+      where.dokter_id = dokterId;
     }
 
-    const query = `
-      SELECT * FROM antrian 
-      WHERE ${whereClause}
-      ORDER BY jam_daftar ASC 
-      LIMIT 1
-    `;
+    const antrian = await this.findOne({
+      where,
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        },
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [['waktu_panggil', 'DESC']]
+    });
 
-    const result = await this.executeQuery(query, params);
-    return result.length > 0 ? result[0] : null;
-  }
-
-  /**
-   * Get current antrian being called
-   * @param {number} poliId - Poli ID
-   * @param {number} dokterId - Dokter ID (optional)
-   * @returns {Promise<Object|null>} Current antrian or null
-   */
-  async getCurrentAntrian(poliId, dokterId = null) {
-    let whereClause = 'poli_id = ? AND status = ?';
-    const params = [poliId, 'dipanggil'];
-
-    if (dokterId) {
-      whereClause += ' AND dokter_id = ?';
-      params.push(dokterId);
+    if (antrian) {
+      const result = antrian.toJSON();
+      result.status = result.status_antrian.toLowerCase();
+      return result;
     }
-
-    const query = `
-      SELECT * FROM antrian 
-      WHERE ${whereClause}
-      ORDER BY jam_panggil DESC 
-      LIMIT 1
-    `;
-
-    const result = await this.executeQuery(query, params);
-    return result.length > 0 ? result[0] : null;
-  }
-
-  /**
-   * Get antrian statistics
-   * @param {string} date - Date filter (optional)
-   * @returns {Promise<Object>} Statistics
-   */
-  async getStatistics(date = null) {
-    let whereClause = '';
-    const params = [];
-
-    if (date) {
-      whereClause = 'WHERE DATE(jam_daftar) = ?';
-      params.push(date);
-    }
-
-    const query = `
-      SELECT 
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'menunggu' THEN 1 ELSE 0 END) as menunggu,
-        SUM(CASE WHEN status = 'dipanggil' THEN 1 ELSE 0 END) as dipanggil,
-        SUM(CASE WHEN status = 'selesai' THEN 1 ELSE 0 END) as selesai,
-        SUM(CASE WHEN status = 'terlewat' THEN 1 ELSE 0 END) as terlewat
-      FROM antrian 
-      ${whereClause}
-    `;
-
-    const result = await this.executeQuery(query, params);
-    return result[0];
-  }
-
-  /**
-   * Get antrian statistics by poli
-   * @param {string} date - Date filter (optional)
-   * @returns {Promise<Array>} Statistics by poli
-   */
-  async getStatisticsByPoli(date = null) {
-    let whereClause = '';
-    const params = [];
-
-    if (date) {
-      whereClause = 'WHERE DATE(a.jam_daftar) = ?';
-      params.push(date);
-    }
-
-    const query = `
-      SELECT 
-        p.id as poli_id,
-        p.nama_poli,
-        p.kode_poli,
-        COUNT(a.id) as total_antrian,
-        SUM(CASE WHEN a.status = 'menunggu' THEN 1 ELSE 0 END) as menunggu,
-        SUM(CASE WHEN a.status = 'dipanggil' THEN 1 ELSE 0 END) as dipanggil,
-        SUM(CASE WHEN a.status = 'selesai' THEN 1 ELSE 0 END) as selesai,
-        SUM(CASE WHEN a.status = 'terlewat' THEN 1 ELSE 0 END) as terlewat
-      FROM poli p
-      LEFT JOIN antrian a ON p.id = a.poli_id ${date ? 'AND DATE(a.jam_daftar) = ?' : ''}
-      WHERE p.aktif = true
-      GROUP BY p.id, p.nama_poli, p.kode_poli
-      ORDER BY p.nama_poli ASC
-    `;
-
-    return await this.executeQuery(query, params);
-  }
-
-  /**
-   * Check if nomor antrian exists for today
-   * @param {string} nomorAntrian - Nomor antrian
-   * @returns {Promise<boolean>} Exists or not
-   */
-  async isNomorAntrianExistsToday(nomorAntrian) {
-    const today = new Date().toISOString().split('T')[0];
-    const query = `
-      SELECT COUNT(*) as count 
-      FROM antrian 
-      WHERE nomor_antrian = ? AND DATE(jam_daftar) = ?
-    `;
     
-    const result = await this.executeQuery(query, [nomorAntrian, today]);
-    return result[0].count > 0;
+    return null;
   }
 
-  /**
-   * Get waiting time estimation
-   * @param {number} poliId - Poli ID
-   * @param {number} antrianId - Current antrian ID
-   * @returns {Promise<Object>} Estimation data
-   */
-  async getWaitingTimeEstimation(poliId, antrianId) {
-    // Get antrian position
-    const positionQuery = `
-      SELECT COUNT(*) as position
-      FROM antrian 
-      WHERE poli_id = ? 
-        AND status = 'menunggu' 
-        AND jam_daftar < (SELECT jam_daftar FROM antrian WHERE id = ?)
-    `;
+  static async getStatistics(date = null) {
+    const filterDate = date || new Date().toISOString().split('T')[0];
     
-    const positionResult = await this.executeQuery(positionQuery, [poliId, antrianId]);
-    const position = positionResult[0].position + 1; // +1 for current position
+    const stats = await this.findAll({
+      attributes: [
+        [this.sequelize.fn('COUNT', this.sequelize.col('id')), 'total'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN status_antrian = 'MENUNGGU' THEN 1 END")), 'menunggu'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN status_antrian = 'DIPANGGIL' THEN 1 END")), 'dipanggil'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN status_antrian = 'SEDANG_DILAYANI' THEN 1 END")), 'sedang_dilayani'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN status_antrian = 'SELESAI' THEN 1 END")), 'selesai'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN status_antrian = 'TIDAK_HADIR' THEN 1 END")), 'terlewat'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN status_antrian = 'BATAL' THEN 1 END")), 'batal']
+      ],
+      where: {
+        tanggal_antrian: filterDate
+      }
+    });
 
-    // Average service time (in minutes) - could be configurable
-    const avgServiceTime = 15; // 15 minutes per patient
-    const estimatedWaitTime = position * avgServiceTime;
+    const result = stats[0].toJSON();
+    
+    // Convert to numbers and add calculated fields
+    Object.keys(result).forEach(key => {
+      result[key] = parseInt(result[key]) || 0;
+    });
 
+    return result;
+  }
+
+  static async getStatisticsByPoli(date = null) {
+    const filterDate = date || new Date().toISOString().split('T')[0];
+    
+    const stats = await this.findAll({
+      attributes: [
+        'poli_id',
+        [this.sequelize.fn('COUNT', this.sequelize.col('Antrian.id')), 'total_antrian'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN \"Antrian\".\"status_antrian\" = 'MENUNGGU' THEN 1 END")), 'menunggu'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN \"Antrian\".\"status_antrian\" = 'DIPANGGIL' THEN 1 END")), 'dipanggil'],
+        [this.sequelize.fn('COUNT', this.sequelize.literal("CASE WHEN \"Antrian\".\"status_antrian\" = 'SELESAI' THEN 1 END")), 'selesai']
+      ],
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['nama_poli', 'kode_poli']
+        }
+      ],
+      where: {
+        tanggal_antrian: filterDate
+      },
+      group: ['Antrian.poli_id', 'poli.id', 'poli.nama_poli', 'poli.kode_poli'],
+      order: [['poli_id', 'ASC']]
+    });
+
+    return stats.map(stat => {
+      const result = stat.toJSON();
+      // Convert counts to numbers
+      result.total_antrian = parseInt(result.total_antrian) || 0;
+      result.menunggu = parseInt(result.menunggu) || 0;
+      result.dipanggil = parseInt(result.dipanggil) || 0;
+      result.selesai = parseInt(result.selesai) || 0;
+      
+      // Add poli info
+      if (result.poli) {
+        result.nama_poli = result.poli.nama_poli;
+        result.kode_poli = result.poli.kode_poli;
+      }
+      
+      return result;
+    });
+  }
+
+  static async getWaitingTimeEstimation(poliId, antrianId) {
+    const targetAntrian = await this.findByPk(antrianId);
+    
+    if (!targetAntrian || targetAntrian.status_antrian !== 'MENUNGGU') {
+      throw new Error('Antrian tidak ditemukan atau tidak dalam status menunggu');
+    }
+
+    // Count antrian before this one
+    const { Op } = require('sequelize');
+    const antrianSebelum = await this.count({
+      where: {
+        poli_id: poliId,
+        tanggal_antrian: targetAntrian.tanggal_antrian,
+        status_antrian: 'MENUNGGU',
+        created_at: {
+          [Op.lt]: targetAntrian.created_at
+        }
+      }
+    });
+
+    // Average service time (estimated 15 minutes per patient)
+    const avgServiceTimeMinutes = 15;
+    const estimatedWaitMinutes = (antrianSebelum + 1) * avgServiceTimeMinutes;
+    
+    // Calculate estimated time
+    const now = new Date();
+    const estimatedTime = new Date(now.getTime() + (estimatedWaitMinutes * 60000));
+    
     return {
-      position,
-      estimatedWaitTimeMinutes: estimatedWaitTime,
-      estimatedWaitTimeText: this.formatWaitTime(estimatedWaitTime)
+      position: antrianSebelum + 1,
+      estimatedWaitTime: estimatedWaitMinutes,
+      estimatedWaitTimeText: `${Math.floor(estimatedWaitMinutes / 60)} jam ${estimatedWaitMinutes % 60} menit`,
+      estimatedCallTime: estimatedTime.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     };
   }
 
-  /**
-   * Format wait time to human readable
-   * @param {number} minutes - Wait time in minutes
-   * @returns {string} Formatted time
-   */
-  formatWaitTime(minutes) {
-    if (minutes < 60) {
-      return `${minutes} menit`;
-    } else {
-      const hours = Math.floor(minutes / 60);
-      const remainingMinutes = minutes % 60;
-      return `${hours} jam ${remainingMinutes} menit`;
+  static async getTodayAntrianForDisplay(poliId = null) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const where = {
+      tanggal_antrian: today
+    };
+    
+    if (poliId) {
+      where.poli_id = poliId;
     }
+
+    const antrian = await this.findAll({
+      where,
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        },
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [
+        ['poli_id', 'ASC'],
+        ['nomor_antrian', 'ASC']
+      ]
+    });
+
+    return antrian.map(item => {
+      const result = item.toJSON();
+      result.status = result.status_antrian.toLowerCase();
+      return result;
+    });
   }
 
-  /**
-   * Get today's antrian for display
-   * @param {number} poliId - Poli ID (optional)
-   * @returns {Promise<Array>} Display data
-   */
-  async getTodayAntrianForDisplay(poliId = null) {
-    const today = new Date().toISOString().split('T')[0];
-    let whereClause = 'DATE(a.jam_daftar) = ?';
-    const params = [today];
+  static async findByPoliWithDetails(poliId, status = null, date = null) {
+    const filterDate = date || new Date().toISOString().split('T')[0];
+    
+    const where = {
+      poli_id: poliId,
+      tanggal_antrian: filterDate
+    };
 
-    if (poliId) {
-      whereClause += ' AND a.poli_id = ?';
-      params.push(poliId);
+    if (status) {
+      where.status_antrian = status.toUpperCase();
     }
 
-    const query = `
-      SELECT 
-        a.id,
-        a.nomor_antrian,
-        a.nama_pasien,
-        a.status,
-        a.jam_daftar,
-        a.jam_panggil,
-        p.nama_poli,
-        p.kode_poli,
-        d.nama_dokter
-      FROM antrian a
-      LEFT JOIN poli p ON a.poli_id = p.id
-      LEFT JOIN dokter d ON a.dokter_id = d.id
-      WHERE ${whereClause}
-      ORDER BY a.jam_daftar ASC
-    `;
+    const antrian = await this.findAll({
+      where,
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        },
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [['nomor_antrian', 'ASC']]
+    });
 
-    return await this.executeQuery(query, params);
+    return antrian.map(item => {
+      const result = item.toJSON();
+      result.status = result.status_antrian.toLowerCase();
+      return result;
+    });
+  }
+
+  static async getNextAntrian(poliId, dokterId = null) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const where = {
+      poli_id: poliId,
+      status_antrian: 'MENUNGGU',
+      tanggal_antrian: today
+    };
+
+    if (dokterId) {
+      where.dokter_id = dokterId;
+    }
+
+    const antrian = await this.findOne({
+      where,
+      include: [
+        {
+          model: require('./Poli'),
+          as: 'poli',
+          attributes: ['id', 'nama_poli', 'kode_poli']
+        },
+        {
+          model: require('./Dokter'),
+          as: 'dokter',
+          attributes: ['id', 'nama_dokter', 'spesialisasi']
+        }
+      ],
+      order: [
+        ['prioritas', 'DESC'],
+        ['created_at', 'ASC']
+      ]
+    });
+
+    if (antrian) {
+      const result = antrian.toJSON();
+      result.status = result.status_antrian.toLowerCase();
+      return result;
+    }
+    
+    return null;
+  }
+
+  // Associations
+  static associate(models) {
+    // Antrian belongs to Poli
+    this.belongsTo(models.Poli, {
+      foreignKey: 'poli_id',
+      as: 'poli'
+    });
+
+    // Antrian belongs to Dokter
+    this.belongsTo(models.Dokter, {
+      foreignKey: 'dokter_id',
+      as: 'dokter'
+    });
   }
 }
 
-module.exports = new Antrian();
+module.exports = Antrian;

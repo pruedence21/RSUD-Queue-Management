@@ -1,320 +1,210 @@
-const database = require('../config/database');
-const logger = require('../utils/logger');
-const { createError } = require('../middleware/errorHandler');
+const { Model } = require('sequelize');
 
 /**
- * Base Model class yang menyediakan operasi CRUD dasar
- * Semua model lain akan extend dari class ini
+ * Base Model class that extends Sequelize Model
+ * Provides common functionality for all models
  */
-class BaseModel {
-  constructor(tableName) {
-    this.tableName = tableName;
-    this.connection = database.getConnection();
-  }
-
+class BaseModel extends Model {
   /**
-   * Get database connection
-   * @returns {Object} Database connection
+   * Convert model instance to JSON with cleaned data
    */
-  getConnection() {
-    if (!this.connection) {
-      this.connection = database.getConnection();
-    }
-    return this.connection;
-  }
-
-  /**
-   * Execute query with logging
-   * @param {string} query - SQL query
-   * @param {Array} params - Query parameters
-   * @returns {Promise<Array>} Query result
-   */
-  async executeQuery(query, params = []) {
-    const startTime = Date.now();
+  toJSON() {
+    const values = Object.assign({}, this.get());
     
+    // Remove sensitive fields if they exist
+    delete values.password;
+    delete values.token;
+    delete values.refresh_token;
+    
+    return values;
+  }
+
+  /**
+   * Get formatted creation date
+   */
+  getCreatedDate() {
+    return this.created_at ? this.created_at.toLocaleDateString('id-ID') : null;
+  }
+
+  /**
+   * Get formatted update date
+   */
+  getUpdatedDate() {
+    return this.updated_at ? this.updated_at.toLocaleDateString('id-ID') : null;
+  }
+
+  /**
+   * Check if record is active (for models with 'aktif' field)
+   */
+  isActive() {
+    return this.aktif === true || this.aktif === 1;
+  }
+
+  /**
+   * Soft delete (for models with 'deleted_at' field)
+   */
+  async softDelete() {
+    if (this.deleted_at !== undefined) {
+      await this.update({ deleted_at: new Date() });
+    } else {
+      throw new Error('Model does not support soft delete');
+    }
+  }
+
+  /**
+   * Restore from soft delete
+   */
+  async restore() {
+    if (this.deleted_at !== undefined) {
+      await this.update({ deleted_at: null });
+    } else {
+      throw new Error('Model does not support soft delete');
+    }
+  }
+
+  /**
+   * Get model's primary key value
+   */
+  getPrimaryKey() {
+    const primaryKey = this.constructor.primaryKeyAttribute || 'id';
+    return this[primaryKey];
+  }
+
+  /**
+   * Update model with validation
+   */
+  async updateSafe(data, options = {}) {
     try {
-      const connection = this.getConnection();
-      const [rows] = await connection.execute(query, params);
-      
-      const executionTime = Date.now() - startTime;
-      logger.dbQuery(query, executionTime, { 
-        table: this.tableName,
-        rowCount: Array.isArray(rows) ? rows.length : 1
+      return await this.update(data, {
+        validate: true,
+        ...options
       });
-      
-      return rows;
     } catch (error) {
-      const executionTime = Date.now() - startTime;
-      logger.error('Database query failed', {
-        query,
-        params,
-        table: this.tableName,
-        executionTime,
-        error: error.message
+      throw new Error(`Failed to update ${this.constructor.name}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create a new instance with validation
+   */
+  static async createSafe(data, options = {}) {
+    try {
+      return await this.create(data, {
+        validate: true,
+        ...options
       });
-      throw createError('Database operation failed: ' + error.message, 500);
+    } catch (error) {
+      throw new Error(`Failed to create ${this.name}: ${error.message}`);
     }
   }
 
   /**
-   * Get all records
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} All records
+   * Find by primary key with error handling
    */
-  async findAll(options = {}) {
-    const { 
-      where = '', 
-      orderBy = 'id ASC', 
-      limit = null, 
-      offset = 0,
-      params = []
-    } = options;
-
-    let query = `SELECT * FROM ${this.tableName}`;
-    
-    if (where) {
-      query += ` WHERE ${where}`;
+  static async findByPkSafe(id, options = {}) {
+    try {
+      const instance = await this.findByPk(id, options);
+      if (!instance) {
+        throw new Error(`${this.name} with id ${id} not found`);
+      }
+      return instance;
+    } catch (error) {
+      throw new Error(`Failed to find ${this.name}: ${error.message}`);
     }
-    
-    if (orderBy) {
-      query += ` ORDER BY ${orderBy}`;
-    }
-    
-    if (limit) {
-      query += ` LIMIT ${limit} OFFSET ${offset}`;
-    }
-
-    return await this.executeQuery(query, params);
   }
 
   /**
-   * Get record by ID
-   * @param {number} id - Record ID
-   * @returns {Promise<Object|null>} Record or null if not found
+   * Count active records (for models with 'aktif' field)
    */
-  async findById(id) {
-    const query = `SELECT * FROM ${this.tableName} WHERE id = ?`;
-    const result = await this.executeQuery(query, [id]);
-    return result.length > 0 ? result[0] : null;
-  }
-
-  /**
-   * Get single record by condition
-   * @param {Object} conditions - Where conditions
-   * @returns {Promise<Object|null>} Record or null if not found
-   */
-  async findOne(conditions = {}) {
-    const keys = Object.keys(conditions);
-    if (keys.length === 0) {
-      throw createError('Conditions are required for findOne', 400);
-    }
-
-    const whereClause = keys.map(key => `${key} = ?`).join(' AND ');
-    const values = keys.map(key => conditions[key]);
-    
-    const query = `SELECT * FROM ${this.tableName} WHERE ${whereClause} LIMIT 1`;
-    const result = await this.executeQuery(query, values);
-    return result.length > 0 ? result[0] : null;
-  }
-
-  /**
-   * Get records by condition
-   * @param {Object} conditions - Where conditions
-   * @param {Object} options - Additional options
-   * @returns {Promise<Array>} Records
-   */
-  async findBy(conditions = {}, options = {}) {
-    const keys = Object.keys(conditions);
-    if (keys.length === 0) {
-      return await this.findAll(options);
-    }
-
-    const whereClause = keys.map(key => `${key} = ?`).join(' AND ');
-    const values = keys.map(key => conditions[key]);
-    
-    const { orderBy = 'id ASC', limit = null, offset = 0 } = options;
-    
-    let query = `SELECT * FROM ${this.tableName} WHERE ${whereClause}`;
-    
-    if (orderBy) {
-      query += ` ORDER BY ${orderBy}`;
-    }
-    
-    if (limit) {
-      query += ` LIMIT ${limit} OFFSET ${offset}`;
-    }
-
-    return await this.executeQuery(query, values);
-  }
-
-  /**
-   * Create new record
-   * @param {Object} data - Record data
-   * @returns {Promise<Object>} Created record with ID
-   */
-  async create(data) {
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    
-    const placeholders = keys.map(() => '?').join(', ');
-    const columns = keys.join(', ');
-    
-    const query = `INSERT INTO ${this.tableName} (${columns}) VALUES (${placeholders})`;
-    const result = await this.executeQuery(query, values);
-    
-    // Get the created record
-    const createdRecord = await this.findById(result.insertId);
-    
-    logger.info(`Record created in ${this.tableName}`, {
-      id: result.insertId,
-      table: this.tableName
+  static async countActive() {
+    return await this.count({
+      where: { aktif: true }
     });
-    
-    return createdRecord;
   }
 
   /**
-   * Update record by ID
-   * @param {number} id - Record ID
-   * @param {Object} data - Updated data
-   * @returns {Promise<Object|null>} Updated record or null if not found
+   * Find all active records (for models with 'aktif' field)
    */
-  async updateById(id, data) {
-    // Remove timestamps if they exist in data (will be auto-updated)
-    const updateData = { ...data };
-    delete updateData.created_at;
-    delete updateData.updated_at;
-    
-    const keys = Object.keys(updateData);
-    if (keys.length === 0) {
-      throw createError('No data to update', 400);
-    }
-    
-    const values = Object.values(updateData);
-    const setClause = keys.map(key => `${key} = ?`).join(', ');
-    
-    const query = `UPDATE ${this.tableName} SET ${setClause} WHERE id = ?`;
-    await this.executeQuery(query, [...values, id]);
-    
-    // Get the updated record
-    const updatedRecord = await this.findById(id);
-    
-    if (updatedRecord) {
-      logger.info(`Record updated in ${this.tableName}`, {
-        id,
-        table: this.tableName
-      });
-    }
-    
-    return updatedRecord;
+  static async findAllActive(options = {}) {
+    return await this.findAll({
+      where: { aktif: true },
+      ...options
+    });
   }
 
   /**
-   * Delete record by ID
-   * @param {number} id - Record ID
-   * @returns {Promise<boolean>} True if deleted, false if not found
+   * Execute raw SQL query
    */
-  async deleteById(id) {
-    // Check if record exists first
-    const existingRecord = await this.findById(id);
-    if (!existingRecord) {
+  static async executeQuery(query, params = []) {
+    if (!this.sequelize) {
+      throw new Error('Sequelize instance not available');
+    }
+    const [results] = await this.sequelize.query(query, {
+      replacements: params,
+      type: this.sequelize.QueryTypes.SELECT
+    });
+    return results;
+  }
+
+  /**
+   * Find by primary key or throw error
+   */
+  static async findById(id, options = {}) {
+    const instance = await this.findByPk(id, options);
+    if (!instance) {
+      throw new Error(`${this.name} with id ${id} not found`);
+    }
+    return instance;
+  }
+
+  /**
+   * Update by primary key
+   */
+  static async updateById(id, data, options = {}) {
+    const instance = await this.findByPk(id);
+    if (!instance) {
+      return null;
+    }
+    return await instance.update(data, {
+      validate: true,
+      ...options
+    });
+  }
+
+  /**
+   * Delete by primary key
+   */
+  static async deleteById(id) {
+    const instance = await this.findByPk(id);
+    if (!instance) {
       return false;
     }
-    
-    const query = `DELETE FROM ${this.tableName} WHERE id = ?`;
-    await this.executeQuery(query, [id]);
-    
-    logger.info(`Record deleted from ${this.tableName}`, {
-      id,
-      table: this.tableName
-    });
-    
+    await instance.destroy();
     return true;
   }
 
   /**
-   * Count records
-   * @param {Object} conditions - Where conditions
-   * @returns {Promise<number>} Record count
+   * Simple pagination
    */
-  async count(conditions = {}) {
-    const keys = Object.keys(conditions);
-    let query = `SELECT COUNT(*) as count FROM ${this.tableName}`;
-    let values = [];
-    
-    if (keys.length > 0) {
-      const whereClause = keys.map(key => `${key} = ?`).join(' AND ');
-      values = keys.map(key => conditions[key]);
-      query += ` WHERE ${whereClause}`;
-    }
-    
-    const result = await this.executeQuery(query, values);
-    return result[0].count;
-  }
-
-  /**
-   * Check if record exists
-   * @param {Object} conditions - Where conditions
-   * @returns {Promise<boolean>} True if exists
-   */
-  async exists(conditions) {
-    const count = await this.count(conditions);
-    return count > 0;
-  }
-
-  /**
-   * Paginate records
-   * @param {number} page - Page number (1-based)
-   * @param {number} limit - Records per page
-   * @param {Object} conditions - Where conditions
-   * @param {string} orderBy - Order by clause
-   * @returns {Promise<Object>} Paginated result
-   */
-  async paginate(page = 1, limit = 10, conditions = {}, orderBy = 'id ASC') {
+  static async paginate(page = 1, limit = 10, conditions = {}, orderBy = 'created_at DESC') {
     const offset = (page - 1) * limit;
-    const totalCount = await this.count(conditions);
-    const totalPages = Math.ceil(totalCount / limit);
     
-    const data = await this.findBy(conditions, { orderBy, limit, offset });
-    
+    const { count, rows } = await this.findAndCountAll({
+      where: conditions,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [[orderBy.split(' ')[0], orderBy.split(' ')[1] || 'ASC']]
+    });
+
     return {
-      data,
+      data: rows,
       pagination: {
-        currentPage: page,
-        totalPages,
-        totalItems: totalCount,
-        itemsPerPage: limit,
-        hasNext: page < totalPages,
-        hasPrev: page > 1
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(count / limit),
+        totalItems: count,
+        itemsPerPage: parseInt(limit)
       }
     };
-  }
-
-  /**
-   * Get active records (if table has 'aktif' column)
-   * @param {Object} options - Query options
-   * @returns {Promise<Array>} Active records
-   */
-  async findActive(options = {}) {
-    return await this.findBy({ aktif: true }, options);
-  }
-
-  /**
-   * Soft delete (set aktif = false) if table has 'aktif' column
-   * @param {number} id - Record ID
-   * @returns {Promise<Object|null>} Updated record or null if not found
-   */
-  async softDelete(id) {
-    return await this.updateById(id, { aktif: false });
-  }
-
-  /**
-   * Restore soft deleted record
-   * @param {number} id - Record ID
-   * @returns {Promise<Object|null>} Updated record or null if not found
-   */
-  async restore(id) {
-    return await this.updateById(id, { aktif: true });
   }
 }
 

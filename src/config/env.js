@@ -4,11 +4,11 @@ const config = {
   // Environment
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: process.env.PORT || 3000,
-  
-  // Database
+    // Database
   database: {
+    type: process.env.DB_TYPE || 'mysql', // mysql or postgres
     host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 3306,
+    port: parseInt(process.env.DB_PORT) || (process.env.DB_TYPE === 'postgres' ? 5432 : 3306),
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'rsud_queue_system'

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - RSUD Queue System Admin</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/responsive.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="admin-layout">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <h2>RSUD Queue</h2>
+                <span>Admin Panel</span>
+            </div>
+        </div>
+        
+        <ul class="sidebar-menu">
+            <li class="menu-item active">
+                <a href="#dashboard" class="menu-link" data-page="dashboard">
+                    <span class="menu-icon">📊</span>
+                    <span class="menu-text">Dashboard</span>
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="#poli" class="menu-link" data-page="poli">
+                    <span class="menu-icon">🏥</span>
+                    <span class="menu-text">Manajemen Poli</span>
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="#dokter" class="menu-link" data-page="dokter">
+                    <span class="menu-icon">👨‍⚕️</span>
+                    <span class="menu-text">Manajemen Dokter</span>
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="#users" class="menu-link" data-page="users">
+                    <span class="menu-icon">👥</span>
+                    <span class="menu-text">Manajemen User</span>
+                </a>
+            </li>
+            <li class="menu-item">
+                <a href="#settings" class="menu-link" data-page="settings">
+                    <span class="menu-icon">⚙️</span>
+                    <span class="menu-text">Pengaturan</span>
+                </a>
+            </li>
+        </ul>
+        
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <span class="user-name" id="userName">Admin</span>
+                <span class="user-role" id="userRole">Administrator</span>
+            </div>
+            <button class="btn btn-secondary btn-logout" id="logoutBtn">
+                <span class="menu-icon">🚪</span>
+                Keluar
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <header class="content-header">
+            <div class="header-left">
+                <button class="btn btn-ghost sidebar-toggle" id="sidebarToggle">
+                    <span>☰</span>
+                </button>
+                <h1 class="page-title" id="pageTitle">Dashboard</h1>
+            </div>
+            <div class="header-right">
+                <div class="notification-bell">
+                    <span class="bell-icon">🔔</span>
+                    <span class="notification-count hidden" id="notificationCount">0</span>
+                </div>
+                <div class="user-avatar">
+                    <span>👤</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="content-body" id="contentBody">
+            <!-- Dashboard Content -->
+            <div id="dashboardContent" class="page-content active">
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stats-card">
+                        <div class="stats-icon">🏥</div>
+                        <div class="stats-info">
+                            <h3 id="totalPoli">-</h3>
+                            <p>Total Poli</p>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon">👨‍⚕️</div>
+                        <div class="stats-info">
+                            <h3 id="totalDokter">-</h3>
+                            <p>Total Dokter</p>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon">👥</div>
+                        <div class="stats-info">
+                            <h3 id="totalUser">-</h3>
+                            <p>Total User</p>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-icon">📋</div>
+                        <div class="stats-info">
+                            <h3 id="antrianHariIni">-</h3>
+                            <p>Antrian Hari Ini</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts and Tables Row -->
+                <div class="dashboard-grid">
+                    <!-- Queue Today Stats -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3>Statistik Antrian Hari Ini</h3>
+                            <button class="btn btn-ghost btn-refresh" onclick="AdminDashboard.loadTodayStats()">🔄</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="todayStatsContent">
+                                <div class="loading">Memuat data...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activities -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3>Aktivitas Terbaru</h3>
+                            <button class="btn btn-ghost btn-refresh" onclick="AdminDashboard.loadActivityLog()">🔄</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="activityLogContent">
+                                <div class="loading">Memuat data...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Alerts -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3>Peringatan Sistem</h3>
+                            <button class="btn btn-ghost btn-refresh" onclick="AdminDashboard.loadSystemAlerts()">🔄</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="systemAlertsContent">
+                                <div class="loading">Memuat data...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Performance -->
+                    <div class="dashboard-card">
+                        <div class="card-header">
+                            <h3>Performa Sistem</h3>
+                            <button class="btn btn-ghost btn-refresh" onclick="AdminDashboard.loadSystemPerformance()">🔄</button>
+                        </div>
+                        <div class="card-body">
+                            <div id="systemPerformanceContent">
+                                <div class="loading">Memuat data...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Other page contents will be loaded dynamically -->
+            <div id="poliContent" class="page-content">
+                <div class="loading">Memuat halaman Poli...</div>
+            </div>
+
+            <div id="dokterContent" class="page-content">
+                <div class="loading">Memuat halaman Dokter...</div>
+            </div>
+
+            <div id="usersContent" class="page-content">
+                <div class="loading">Memuat halaman Users...</div>
+            </div>
+
+            <div id="settingsContent" class="page-content">
+                <div class="loading">Memuat halaman Settings...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="notification-container"></div>
+
+    <!-- Modal Container -->
+    <div id="modalContainer"></div>
+
+    <!-- Include JavaScript -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/components.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/admin.js"></script>
+    
+    <script>
+        // Initialize admin panel
+        document.addEventListener('DOMContentLoaded', function() {
+            AdminPanel.init();
+        });
+    </script>
+</body>
+</html>

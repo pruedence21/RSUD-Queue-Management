@@ -2,22 +2,40 @@ const database = require('../config/database');
 
 const createPoliTable = async () => {
   try {
-    const connection = database.getConnection();
+    const dbType = database.getDbType();
     
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS poli (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        nama_poli VARCHAR(100) NOT NULL,
-        kode_poli VARCHAR(10) NOT NULL UNIQUE,
-        aktif BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_kode_poli (kode_poli),
-        INDEX idx_aktif (aktif)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `;
+    let createTableQuery;
+    
+    if (dbType === 'mysql') {
+      createTableQuery = `
+        CREATE TABLE IF NOT EXISTS poli (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          nama_poli VARCHAR(100) NOT NULL,
+          kode_poli VARCHAR(10) NOT NULL UNIQUE,
+          aktif BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_kode_poli (kode_poli),
+          INDEX idx_aktif (aktif)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `;
+    } else if (dbType === 'postgres' || dbType === 'postgresql') {
+      createTableQuery = `
+        CREATE TABLE IF NOT EXISTS poli (
+          id SERIAL PRIMARY KEY,
+          nama_poli VARCHAR(100) NOT NULL,
+          kode_poli VARCHAR(10) NOT NULL UNIQUE,
+          aktif BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_poli_kode_poli ON poli (kode_poli);
+        CREATE INDEX IF NOT EXISTS idx_poli_aktif ON poli (aktif);
+      `;
+    }
 
-    await connection.execute(createTableQuery);
+    await database.execute(createTableQuery);
     console.log('✅ Tabel poli berhasil dibuat');
     
     return true;
@@ -29,8 +47,7 @@ const createPoliTable = async () => {
 
 const dropPoliTable = async () => {
   try {
-    const connection = database.getConnection();
-    await connection.execute('DROP TABLE IF EXISTS poli');
+    await database.execute('DROP TABLE IF EXISTS poli');
     console.log('✅ Tabel poli berhasil dihapus');
     return true;
   } catch (error) {

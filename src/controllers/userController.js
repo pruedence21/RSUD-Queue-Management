@@ -76,20 +76,59 @@ const getUserById = asyncHandler(async (req, res) => {
  * @access Private (Admin only)
  */
 const createUser = asyncHandler(async (req, res) => {
-  const userData = req.body;
+  try {
+    const userData = req.body;
 
-  const newUser = await User.create(userData);
+    // Validate required fields
+    if (!userData.username || !userData.password || !userData.role) {
+      const errorResponse = error('Username, password, dan role wajib diisi', null, 400);
+      return send(res, errorResponse);
+    }
 
-  logger.info('User created', {
-    userId: newUser.id,
-    username: newUser.username,
-    role: newUser.role,
-    createdBy: req.user.username,
-    ip: req.ip
-  });
+    // Check if username already exists
+    const existingUser = await User.findOne({ where: { username: userData.username } });
+    if (existingUser) {
+      const errorResponse = error('Username sudah digunakan', null, 409);
+      return send(res, errorResponse);
+    }
 
-  const responseData = success('User berhasil dibuat', { user: newUser }, 201);
-  send(res, responseData);
+    // Create user
+    const newUser = await User.create(userData);
+
+    logger.info('User created', {
+      userId: newUser.id,
+      username: newUser.username,
+      role: newUser.role,
+      createdBy: req.user ? req.user.username : 'System',
+      ip: req.ip
+    });
+
+    const responseData = success('User berhasil dibuat', { user: newUser }, 201);
+    send(res, responseData);
+  } catch (createError) {
+    logger.error('Error creating user:', createError);
+    
+    // Handle specific Sequelize errors
+    if (createError.name === 'SequelizeUniqueConstraintError') {
+      const errorResponse = error('Username sudah digunakan', null, 409);
+      return send(res, errorResponse);
+    }
+    
+    if (createError.name === 'SequelizeValidationError') {
+      const validationErrors = createError.errors.map(err => err.message);
+      const errorResponse = error('Validasi gagal: ' + validationErrors.join(', '), null, 400);
+      return send(res, errorResponse);
+    }
+    
+    if (createError.name === 'SequelizeForeignKeyConstraintError') {
+      const errorResponse = error('Referensi data tidak valid', null, 400);
+      return send(res, errorResponse);
+    }
+
+    // Generic error
+    const errorResponse = error('Gagal membuat user', createError.message, 500);
+    send(res, errorResponse);
+  }
 });
 
 /**
@@ -98,25 +137,65 @@ const createUser = asyncHandler(async (req, res) => {
  * @access Private (Admin only)
  */
 const updateUser = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const updateData = req.body;
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
 
-  const updatedUser = await User.updateById(parseInt(id), updateData);
+    // Check if user exists
+    const user = await User.findById(parseInt(id));
+    if (!user) {
+      throw notFoundError('User tidak ditemukan');
+    }
 
-  if (!updatedUser) {
-    throw notFoundError('User tidak ditemukan');
+    // If updating username, check for conflicts
+    if (updateData.username && updateData.username !== user.username) {
+      const existingUser = await User.findOne({ where: { username: updateData.username } });
+      if (existingUser) {
+        const errorResponse = error('Username sudah digunakan', null, 409);
+        return send(res, errorResponse);
+      }
+    }
+
+    const updatedUser = await User.updateById(parseInt(id), updateData);
+
+    if (!updatedUser) {
+      throw notFoundError('User tidak ditemukan');
+    }
+
+    logger.info('User updated', {
+      userId: updatedUser.id,
+      username: updatedUser.username,
+      role: updatedUser.role,
+      updatedBy: req.user ? req.user.username : 'System',
+      ip: req.ip
+    });
+
+    const responseData = success('User berhasil diperbarui', { user: updatedUser });
+    send(res, responseData);
+  } catch (updateError) {
+    logger.error('Error updating user:', updateError);
+    
+    // Handle specific Sequelize errors
+    if (updateError.name === 'SequelizeUniqueConstraintError') {
+      const errorResponse = error('Username sudah digunakan', null, 409);
+      return send(res, errorResponse);
+    }
+    
+    if (updateError.name === 'SequelizeValidationError') {
+      const validationErrors = updateError.errors.map(err => err.message);
+      const errorResponse = error('Validasi gagal: ' + validationErrors.join(', '), null, 400);
+      return send(res, errorResponse);
+    }
+
+    // Re-throw if it's a notFoundError
+    if (updateError.statusCode === 404) {
+      throw updateError;
+    }
+
+    // Generic error
+    const errorResponse = error('Gagal memperbarui user', updateError.message, 500);
+    send(res, errorResponse);
   }
-
-  logger.info('User updated', {
-    userId: updatedUser.id,
-    username: updatedUser.username,
-    role: updatedUser.role,
-    updatedBy: req.user.username,
-    ip: req.ip
-  });
-
-  const responseData = success('User berhasil diperbarui', { user: updatedUser });
-  send(res, responseData);
 });
 
 /**

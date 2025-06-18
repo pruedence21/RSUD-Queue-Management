@@ -21,9 +21,7 @@ const login = asyncHandler(async (req, res) => {
     username, 
     ip: req.ip,
     userAgent: req.get('User-Agent')
-  });
-
-  // Authenticate user
+  });  // Authenticate user
   const user = await User.authenticate(username, password);
   
   if (!user) {
@@ -86,7 +84,7 @@ const getProfile = asyncHandler(async (req, res) => {
   const userId = req.user.id;
 
   // Get fresh user data from database
-  const user = await User.findById(userId);
+  const user = await User.findByPk(userId);
   
   if (!user) {
     throw unauthorizedError('User tidak ditemukan');
@@ -127,7 +125,7 @@ const updateProfile = asyncHandler(async (req, res) => {
   }
 
   // Update user profile
-  const updatedUser = await User.updateById(userId, { nama_lengkap: nama_lengkap.trim() });
+  const updatedUser = await User.updateUser(userId, { nama_lengkap: nama_lengkap.trim() });
 
   if (!updatedUser) {
     throw unauthorizedError('User tidak ditemukan');
@@ -189,7 +187,7 @@ const refreshToken = asyncHandler(async (req, res) => {
     const decoded = jwtUtils.verifyRefreshToken(refreshToken);
     
     // Get user data
-    const user = await User.findById(decoded.id);
+    const user = await User.findByPk(decoded.id);
     
     if (!user || !user.aktif) {
       throw unauthorizedError('User tidak valid atau tidak aktif');
@@ -237,7 +235,7 @@ const verifyToken = asyncHandler(async (req, res) => {
   const user = req.user;
 
   // Get fresh user data to ensure user is still active
-  const freshUser = await User.findById(user.id);
+  const freshUser = await User.findByPk(user.id);
   
   if (!freshUser || !freshUser.aktif) {
     throw unauthorizedError('Token tidak valid atau user tidak aktif');
@@ -271,7 +269,7 @@ const getAuthStatus = asyncHandler(async (req, res) => {
   if (token) {
     try {
       const decoded = jwtUtils.verifyToken(token);
-      const userData = await User.findById(decoded.id);
+      const userData = await User.findByPk(decoded.id);
       
       if (userData && userData.aktif) {
         isAuthenticated = true;

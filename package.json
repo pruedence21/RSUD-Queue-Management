@@ -15,7 +15,8 @@
     "queue",
     "system",
     "nodejs",
-    "mysql"
+    "mysql",
+    "postgresql"
   ],
   "author": "RSUD Development Team",
   "license": "ISC",
@@ -30,6 +31,9 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.6.0",
+    "pg": "^8.16.0",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.7",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

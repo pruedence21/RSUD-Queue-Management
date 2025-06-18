@@ -1,191 +1,455 @@
+const { DataTypes } = require('sequelize');
 const BaseModel = require('./BaseModel');
-const { createError, validationError } = require('../middleware/errorHandler');
-const logger = require('../utils/logger');
 
-/**
- * Settings Model
- * Mengelola data pengaturan sistem
- */
 class Settings extends BaseModel {
-  constructor() {
-    super('settings');
-  }
-
-  /**
-   * Validate setting data
-   * @param {Object} data - Setting data to validate
-   * @param {boolean} isUpdate - Whether this is an update operation
-   * @returns {Object} Validation result
-   */
-  validateData(data, isUpdate = false) {
-    const errors = [];
-
-    // Key setting validation
-    if (!isUpdate || data.hasOwnProperty('key_setting')) {
-      if (!data.key_setting || typeof data.key_setting !== 'string') {
-        errors.push('Key setting diperlukan dan harus berupa string');
-      } else if (data.key_setting.trim().length < 3) {
-        errors.push('Key setting minimal 3 karakter');
-      } else if (data.key_setting.trim().length > 100) {
-        errors.push('Key setting maksimal 100 karakter');
-      } else if (!/^[a-zA-Z0-9_]+$/.test(data.key_setting.trim())) {
-        errors.push('Key setting hanya boleh mengandung huruf, angka, dan underscore');
+  static init(sequelize) {
+    return super.init(
+      {
+        id: {
+          type: DataTypes.INTEGER,
+          primaryKey: true,
+          autoIncrement: true,
+        },
+        key: {
+          type: DataTypes.STRING(100),
+          allowNull: false,
+          unique: true,
+          validate: {
+            notEmpty: true,
+            len: [1, 100],
+          },
+        },
+        value: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        description: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        type: {
+          type: DataTypes.ENUM('string', 'number', 'boolean', 'json'),
+          allowNull: false,
+          defaultValue: 'string',
+        },
+        category: {
+          type: DataTypes.STRING(50),
+          allowNull: true,
+          defaultValue: 'general',
+        },
+        is_editable: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: true,
+        },
+        created_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
+        },
+        updated_at: {
+          type: DataTypes.DATE,
+          allowNull: false,
+          defaultValue: DataTypes.NOW,
+        },
+      },
+      {
+        sequelize,
+        modelName: 'Settings',
+        tableName: 'settings',
+        timestamps: true,
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+        indexes: [
+          {
+            unique: true,
+            fields: ['key'],
+          },
+          {
+            fields: ['category'],
+          },
+          {
+            fields: ['type'],
+          },
+        ],
       }
-    }
+    );
+  }
 
-    // Value setting validation (optional)
-    if (data.hasOwnProperty('value_setting')) {
-      if (data.value_setting !== null &&
-          typeof data.value_setting !== 'string' &&
-          typeof data.value_setting !== 'boolean' &&
-          typeof data.value_setting !== 'number') {
-        errors.push('Value setting harus berupa string, boolean, number, atau null');
+  // Static methods for common operations
+  static async getSetting(key, defaultValue = null) {
+    try {
+      const setting = await this.findOne({
+        where: { key },
+      });
+
+      if (!setting) {
+        return defaultValue;
       }
-    }
 
-    // Deskripsi validation (optional)
-    if (data.hasOwnProperty('deskripsi')) {
-      if (data.deskripsi !== null && typeof data.deskripsi !== 'string') {
-        errors.push('Deskripsi harus berupa string atau null');
-      } else if (data.deskripsi && data.deskripsi.trim().length > 255) {
-        errors.push('Deskripsi maksimal 255 karakter');
+      // Parse value based on type
+      switch (setting.type) {
+        case 'number':
+          return parseFloat(setting.value) || defaultValue;
+        case 'boolean':
+          return setting.value === 'true' || setting.value === '1';
+        case 'json':
+          try {
+            return JSON.parse(setting.value);
+          } catch (e) {
+            return defaultValue;
+          }
+        default:
+          return setting.value || defaultValue;
       }
+    } catch (error) {
+      console.error('Error getting setting:', error);
+      return defaultValue;
     }
-
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
   }
 
-  /**
-   * Get a single setting by key
-   * @param {string} key - The key of the setting
-   * @returns {Promise<Object|null>} The setting object or null if not found
-   */
-  async create(data) {
-    const cleanData = {
-      key_setting: data.key_setting?.trim(),
-      value_setting: (typeof data.value_setting === 'object' && data.value_setting !== null) ? JSON.stringify(data.value_setting) : String(data.value_setting),
-      deskripsi: data.deskripsi?.trim() || null
-    };
-
-    const validation = this.validateData(cleanData);
-    if (!validation.isValid) {
-      throw validationError('Data setting tidak valid', validation.errors);
-    }
-
-    const existingSetting = await this.getSetting(cleanData.key_setting);
-    if (existingSetting) {
-      throw createError('Key setting sudah ada', 409);
-    }
-
-    const createdSetting = await super.create(cleanData);
-    return createdSetting;
-  }
-
-  async getSetting(key) {
-    if (!key) {
-      throw createError('Key setting diperlukan', 400);
-    }
-    const setting = await this.findOne({ key_setting: key });
-    return setting;
-  }
-
-  /**
-   * Update a setting by key
-   * @param {string} key - The key of the setting to update
-   * @param {Object} data - The data to update (value_setting, deskripsi)
-   * @returns {Promise<Object|null>} The updated setting object or null if not found
-   */
-  async updateSetting(key, data) {
-    if (!key) {
-      throw createError('Key setting diperlukan', 400);
-    }
-
-    const existingSetting = await this.getSetting(key);
-    if (!existingSetting) {
-      throw createError('Setting tidak ditemukan', 404);
-    }
-
-    const cleanData = {};
-    if (data.hasOwnProperty('value_setting')) {
-      cleanData.value_setting = (typeof data.value_setting === 'object' && data.value_setting !== null) ? JSON.stringify(data.value_setting) : String(data.value_setting);
-    }
-    if (data.hasOwnProperty('deskripsi')) {
-      cleanData.deskripsi = data.deskripsi?.trim() || null;
-    }
-
-    const validation = this.validateData(cleanData, true);
-    if (!validation.isValid) {
-      throw validationError('Data setting tidak valid', validation.errors);
-    }
-
-    const updatedSetting = await super.updateById(existingSetting.id, cleanData);
-    return updatedSetting;
-  }
-
-  /**
-   * Get all settings
-   * @returns {Promise<Array>} List of all settings
-   */
-  async getAllSettings() {
-    return await this.findAll({ orderBy: 'key_setting ASC' });
-  }
-
-  /**
-   * Batch update multiple settings
-   * @param {Array<Object>} settingsArray - Array of setting objects { key_setting, value_setting, deskripsi }
-   * @returns {Promise<Array<Object>>} Array of updated settings
-   */
-  async batchUpdateSettings(settingsArray) {
-    if (!Array.isArray(settingsArray) || settingsArray.length === 0) {
-      throw createError('Array settings diperlukan untuk batch update', 400);
-    }
-
-    const updatedSettings = [];
-    for (const settingData of settingsArray) {
-      try {
-        const updated = await this.updateSetting(settingData.key_setting, settingData);
-        updatedSettings.push(updated);
-      } catch (err) {
-        logger.warn(`Failed to update setting ${settingData.key_setting}: ${err.message}`);
-        // Optionally, re-throw or collect errors for a partial failure report
+  static async setSetting(key, value, type = 'string', description = null, category = 'general') {
+    try {
+      let stringValue = value;
+      
+      // Convert value to string based on type
+      if (type === 'json') {
+        stringValue = JSON.stringify(value);
+      } else if (type === 'boolean') {
+        stringValue = value ? 'true' : 'false';
+      } else {
+        stringValue = String(value);
       }
+
+      const [setting, created] = await this.findOrCreate({
+        where: { key },
+        defaults: {
+          key,
+          value: stringValue,
+          type,
+          description,
+          category,
+        },
+      });
+
+      if (!created) {
+        await setting.update({
+          value: stringValue,
+          type,
+          description: description || setting.description,
+          category: category || setting.category,
+        });
+      }
+
+      return setting;
+    } catch (error) {
+      console.error('Error setting setting:', error);
+      throw error;
     }
-    return updatedSettings;
   }
 
-  /**
-   * Initialize default settings if they don't exist
-   * @param {Array<Object>} defaultSettings - Array of default setting objects { key_setting, value_setting, deskripsi }
-   */
-  async initializeDefaultSettings(defaultSettings) {
-    if (!Array.isArray(defaultSettings) || defaultSettings.length === 0) {
-      logger.warn('No default settings provided for initialization.');
-      return;
-    }
+  static async getSettingsByCategory(category) {
+    try {
+      const settings = await this.findAll({
+        where: { category },
+        order: [['key', 'ASC']],
+      });
 
-    for (const defaultSetting of defaultSettings) {
-      const { key_setting, value_setting, deskripsi } = defaultSetting;
-      const existingSetting = await this.getSetting(key_setting);
+      const result = {};
+      settings.forEach(setting => {
+        let value = setting.value;
+        
+        // Parse value based on type
+        switch (setting.type) {
+          case 'number':
+            value = parseFloat(setting.value);
+            break;
+          case 'boolean':
+            value = setting.value === 'true' || setting.value === '1';
+            break;
+          case 'json':
+            try {
+              value = JSON.parse(setting.value);
+            } catch (e) {
+              value = setting.value;
+            }
+            break;
+        }
 
-      if (!existingSetting) {
-        const cleanData = {
-          key_setting: key_setting.trim(),
-          value_setting: typeof value_setting === 'object' ? JSON.stringify(value_setting) : value_setting,
-          deskripsi: deskripsi?.trim() || null
+        result[setting.key] = {
+          value,
+          type: setting.type,
+          description: setting.description,
+          is_editable: setting.is_editable,
         };
-        const validation = this.validateData(cleanData);
-        if (validation.isValid) {
-          await super.create(cleanData);
-          logger.info(`Default setting '${key_setting}' initialized.`);
-        } else {
-          logger.error(`Failed to validate default setting '${key_setting}': ${validation.errors.join(', ')}`);
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error getting settings by category:', error);
+      throw error;
+    }
+  }
+
+  static async getAllSettings() {
+    try {
+      const settings = await this.findAll({
+        order: [['category', 'ASC'], ['key', 'ASC']],
+      });
+
+      const result = {};
+      settings.forEach(setting => {
+        if (!result[setting.category]) {
+          result[setting.category] = {};
+        }
+
+        let value = setting.value;
+        
+        // Parse value based on type
+        switch (setting.type) {
+          case 'number':
+            value = parseFloat(setting.value);
+            break;
+          case 'boolean':
+            value = setting.value === 'true' || setting.value === '1';
+            break;
+          case 'json':
+            try {
+              value = JSON.parse(setting.value);
+            } catch (e) {
+              value = setting.value;
+            }
+            break;
+        }
+
+        result[setting.category][setting.key] = {
+          value,
+          type: setting.type,
+          description: setting.description,
+          is_editable: setting.is_editable,
+        };
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error getting all settings:', error);
+      throw error;
+    }
+  }
+
+  static async deleteSetting(key) {
+    try {
+      const setting = await this.findOne({
+        where: { key },
+      });
+
+      if (!setting) {
+        return false;
+      }
+
+      if (!setting.is_editable) {
+        throw new Error('Setting is not editable');
+      }
+
+      await setting.destroy();
+      return true;
+    } catch (error) {
+      console.error('Error deleting setting:', error);
+      throw error;
+    }
+  }
+
+  static async updateSetting(key, value, description = null) {
+    try {
+      const setting = await this.findOne({ where: { key } });
+      
+      if (!setting) {
+        throw new Error(`Setting dengan key '${key}' tidak ditemukan`);
+      }
+
+      if (!setting.is_editable) {
+        throw new Error(`Setting '${key}' tidak dapat diedit`);
+      }
+
+      let stringValue = value;
+      
+      // Convert value to string based on type
+      if (setting.type === 'json') {
+        stringValue = JSON.stringify(value);
+      } else if (setting.type === 'boolean') {
+        stringValue = value ? 'true' : 'false';
+      } else {
+        stringValue = String(value);
+      }
+
+      await setting.update({
+        value: stringValue,
+        description: description || setting.description
+      });
+
+      return setting;
+    } catch (error) {
+      console.error('Error updating setting:', error);
+      throw error;
+    }
+  }
+
+  static async batchUpdateSettings(settingsArray) {
+    try {
+      const results = [];
+      const errors = [];
+
+      for (const settingData of settingsArray) {
+        try {
+          const { key, value, description } = settingData;
+          const updated = await this.updateSetting(key, value, description);
+          results.push(updated);
+        } catch (error) {
+          errors.push({
+            key: settingData.key,
+            error: error.message
+          });
         }
       }
+
+      return {
+        success: results,
+        errors: errors,
+        totalUpdated: results.length,
+        totalErrors: errors.length
+      };
+    } catch (error) {
+      console.error('Error batch updating settings:', error);
+      throw error;
     }
+  }
+
+  static async getSettingsForCategory(category) {
+    try {
+      const settings = await this.findAll({
+        where: { category },
+        order: [['key', 'ASC']]
+      });
+
+      return settings.map(setting => ({
+        id: setting.id,
+        key: setting.key,
+        value: setting.getParsedValue(),
+        description: setting.description,
+        type: setting.type,
+        category: setting.category,
+        is_editable: setting.is_editable,
+        created_at: setting.created_at,
+        updated_at: setting.updated_at
+      }));
+    } catch (error) {
+      console.error('Error getting settings for category:', error);
+      throw error;
+    }
+  }
+
+  static async initializeDefaultSettings() {
+    try {
+      const defaultSettings = [
+        {
+          key: 'app_name',
+          value: 'RSUD Queue Management',
+          description: 'Nama aplikasi',
+          type: 'string',
+          category: 'general'
+        },
+        {
+          key: 'max_queue_per_day',
+          value: '100',
+          description: 'Maksimal antrian per hari',
+          type: 'number',
+          category: 'queue'
+        },
+        {
+          key: 'queue_call_interval',
+          value: '15',
+          description: 'Interval pemanggilan antrian (menit)',
+          type: 'number',
+          category: 'queue'
+        },
+        {
+          key: 'auto_close_queue',
+          value: 'true',
+          description: 'Otomatis tutup antrian di akhir hari',
+          type: 'boolean',
+          category: 'queue'
+        },
+        {
+          key: 'working_hours',
+          value: JSON.stringify({
+            start: '08:00',
+            end: '16:00',
+            break_start: '12:00',
+            break_end: '13:00'
+          }),
+          description: 'Jam kerja',
+          type: 'json',
+          category: 'schedule'
+        }
+      ];
+
+      const results = [];
+      for (const setting of defaultSettings) {
+        const [created, wasCreated] = await this.findOrCreate({
+          where: { key: setting.key },
+          defaults: setting
+        });
+        results.push({ setting: created, wasCreated });
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Error initializing default settings:', error);
+      throw error;
+    }
+  }
+
+  static async getSettingValue(key, defaultValue = null) {
+    try {
+      const value = await this.getSetting(key, defaultValue);
+      return value;
+    } catch (error) {
+      console.error(`Error getting setting value for key '${key}':`, error);
+      return defaultValue;
+    }
+  }
+
+  // Instance methods
+  getParsedValue() {
+    switch (this.type) {
+      case 'number':
+        return parseFloat(this.value);
+      case 'boolean':
+        return this.value === 'true' || this.value === '1';
+      case 'json':
+        try {
+          return JSON.parse(this.value);
+        } catch (e) {
+          return this.value;
+        }
+      default:
+        return this.value;
+    }
+  }
+
+  async setValue(value) {
+    let stringValue = value;
+    
+    if (this.type === 'json') {
+      stringValue = JSON.stringify(value);
+    } else if (this.type === 'boolean') {
+      stringValue = value ? 'true' : 'false';
+    } else {
+      stringValue = String(value);
+    }
+
+    await this.update({ value: stringValue });
   }
 }
 
-module.exports = new Settings();
+module.exports = Settings;

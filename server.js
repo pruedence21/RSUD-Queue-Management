@@ -1,3 +1,4 @@
+const { initializeApp } = require('./src/app');
 const app = require('./src/app');
 const config = require('./src/config/env');
 const database = require('./src/config/database');
@@ -6,22 +7,21 @@ const startServer = async () => {
   try {
     console.log('🚀 Memulai RSUD Queue System Server...\n');
     
-    // Test database connection
-    console.log('🔗 Menguji koneksi database...');
-    await database.createDatabase();
-    await database.connect();
-    await database.testConnection();
+    // Initialize application (database, models, etc.)
+    console.log('� Menginisialisasi aplikasi...');
+    await initializeApp();
     
     // Start Express server
     const server = app.listen(config.PORT, () => {
       console.log(`\n✅ Server berhasil berjalan!`);
       console.log(`🌐 URL: http://localhost:${config.PORT}`);
       console.log(`📊 Environment: ${config.NODE_ENV}`);
-      console.log(`🗄️  Database: ${config.database.database}@${config.database.host}:${config.database.port}`);
+      console.log(`🗄️  Database: ${config.database.type}://${config.database.host}:${config.database.port}/${config.database.database}`);
       console.log(`\n📋 Endpoints tersedia:`);
       console.log(`   - GET  /           : Halaman utama`);
       console.log(`   - GET  /health     : Health check`);
       console.log(`   - GET  /api        : API information`);
+      console.log(`   - GET  /admin      : Admin panel`);
       console.log(`\n🎯 Server siap menerima request!`);
     });
 

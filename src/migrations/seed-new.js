@@ -1,6 +1,6 @@
 const database = require('../config/database');
-const { initializeModels } = require('../models/index');
-const { hashPassword } = require('../utils/bcrypt');
+const { models } = require('../models/index');
+const bcrypt = require('../utils/bcrypt');
 
 const seedData = async () => {
   console.log('🌱 Memulai proses seeding data...\n');
@@ -8,9 +8,7 @@ const seedData = async () => {
   try {
     // Ensure database is connected and models are initialized
     await database.connect();
-    await initializeModels();
     
-    const { models } = require('../models/index');
     const { Poli, Dokter, User, Settings } = models;
     
     // Seed data untuk tabel poli
@@ -53,36 +51,31 @@ const seedData = async () => {
     
     // Seed data untuk tabel users
     console.log('⏳ Seeding data users...');
-    
-    // Create users using model's built-in password hashing
+    const hashedPassword = await bcrypt.hash('admin123');
     const usersData = [
       {
         username: 'admin',
-        password: 'Admin123!', // Password will be hashed by User model
-        nama_lengkap: 'Administrator',
+        password: hashedPassword,
+        nama: 'Administrator',
+        email: 'admin@rsud.com',
         role: 'admin',
         aktif: true
       },
       {
         username: 'operator1',
-        password: 'Operator123!', // Password will be hashed by User model
-        nama_lengkap: 'Operator 1',
-        role: 'petugas',
+        password: hashedPassword,
+        nama: 'Operator 1',
+        email: 'operator1@rsud.com',
+        role: 'operator',
         aktif: true
       }
     ];
     
-    for (const userData of usersData) {
-      const [user, created] = await User.findOrCreate({
-        where: { username: userData.username },
-        defaults: userData
+    for (const user of usersData) {
+      await User.findOrCreate({
+        where: { username: user.username },
+        defaults: user
       });
-      
-      if (created) {
-        console.log(`   ✅ User ${userData.username} created with password: ${userData.password}`);
-      } else {
-        console.log(`   ℹ️  User ${userData.username} already exists`);
-      }
     }
     console.log('✅ Data users berhasil di-seed');
     
@@ -94,21 +87,24 @@ const seedData = async () => {
         value: 'RSUD Queue Management System',
         description: 'Nama rumah sakit',
         type: 'string',
-        category: 'general'
+        category: 'general',
+        is_editable: true
       },
       {
         key: 'max_queue_per_day',
         value: '100',
         description: 'Maksimal antrian per hari per poli',
         type: 'number',
-        category: 'queue'
+        category: 'queue',
+        is_editable: true
       },
       {
         key: 'queue_reset_time',
         value: '06:00',
         description: 'Waktu reset antrian harian',
         type: 'string',
-        category: 'queue'
+        category: 'queue',
+        is_editable: true
       },
       {
         key: 'working_hours',
@@ -120,14 +116,16 @@ const seedData = async () => {
         }),
         description: 'Jam kerja rumah sakit',
         type: 'json',
-        category: 'general'
+        category: 'general',
+        is_editable: true
       },
       {
         key: 'notification_enabled',
         value: 'true',
         description: 'Status notifikasi aktif',
         type: 'boolean',
-        category: 'notification'
+        category: 'notification',
+        is_editable: true
       }
     ];
     
@@ -140,27 +138,11 @@ const seedData = async () => {
     console.log('✅ Data settings berhasil di-seed');
     
     console.log('\n🎉 Proses seeding data selesai!');
-    console.log('\n📋 User credentials yang dapat digunakan:');
-    console.log('   Admin: username=admin, password=Admin123!');
-    console.log('   Operator: username=operator1, password=Operator123!');
     
   } catch (error) {
     console.error('❌ Error saat seeding data:', error);
     throw error;
   }
 };
-
-// Jalankan seed jika dipanggil langsung
-if (require.main === module) {
-  seedData()
-    .then(() => {
-      console.log('✅ Seeding completed successfully');
-      process.exit(0);
-    })
-    .catch(error => {
-      console.error('❌ Seeding failed:', error);
-      process.exit(1);
-    });
-}
 
 module.exports = { seedData };

@@ -1,0 +1,365 @@
+/* Responsive Design */
+
+/* Large Desktop (1200px and up) */
+@media (min-width: 1200px) {
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Desktop (992px to 1199px) */
+@media (max-width: 1199px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Tablet (768px to 991px) */
+@media (max-width: 991px) {
+    :root {
+        --sidebar-width: 260px;
+    }
+    
+    .content-header {
+        padding: var(--spacing-md) var(--spacing-lg);
+    }
+    
+    .content-body {
+        padding: var(--spacing-lg);
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal {
+        max-width: 90%;
+        margin: var(--spacing-md);
+    }
+}
+
+/* Mobile Landscape (576px to 767px) */
+@media (max-width: 767px) {
+    .admin-layout {
+        position: relative;
+    }
+    
+    .sidebar {
+        position: fixed;
+        left: -100%;
+        z-index: 1000;
+        transition: left 0.3s ease-in-out;
+    }
+    
+    .sidebar.show {
+        left: 0;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+    
+    .sidebar-toggle {
+        display: block !important;
+    }
+    
+    .content-header {
+        padding: var(--spacing-md);
+    }
+    
+    .content-body {
+        padding: var(--spacing-md);
+    }
+    
+    .page-title {
+        font-size: 1.25rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-md);
+    }
+    
+    .stats-card {
+        padding: var(--spacing-md);
+    }
+    
+    .stats-info h3 {
+        font-size: 1.5rem;
+    }
+    
+    .card-header,
+    .card-body {
+        padding: var(--spacing-md);
+    }
+    
+    .notification-container {
+        left: var(--spacing-md);
+        right: var(--spacing-md);
+        max-width: none;
+    }
+    
+    /* Form adjustments */
+    .form-row {
+        flex-direction: column;
+    }
+    
+    .modal {
+        max-width: 95%;
+        margin: var(--spacing-sm);
+    }
+    
+    .modal-footer {
+        flex-direction: column;
+    }
+    
+    .modal-footer .btn {
+        width: 100%;
+    }
+    
+    /* Table responsive */
+    .data-table {
+        font-size: 13px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 0.5rem;
+    }
+    
+    .table-actions {
+        flex-direction: column;
+        gap: var(--spacing-xs);
+    }
+    
+    .table-actions .btn {
+        font-size: 11px;
+        padding: 0.25rem 0.5rem;
+    }
+}
+
+/* Mobile Portrait (up to 575px) */
+@media (max-width: 575px) {
+    .login-card {
+        padding: var(--spacing-lg);
+        margin: var(--spacing-md);
+    }
+    
+    .login-header .logo h1 {
+        font-size: 1.5rem;
+    }
+    
+    .content-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-md);
+    }
+    
+    .header-right {
+        align-self: flex-end;
+    }
+    
+    .stats-info h3 {
+        font-size: 1.25rem;
+    }
+    
+    .stats-info p {
+        font-size: 12px;
+    }
+    
+    .card-header h3 {
+        font-size: 1rem;
+    }
+    
+    .notification {
+        margin-bottom: var(--spacing-sm);
+        padding: var(--spacing-sm);
+    }
+    
+    .activity-item {
+        padding: var(--spacing-sm);
+    }
+    
+    .activity-icon {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+    
+    /* Hide some columns on very small screens */
+    .data-table .hide-mobile {
+        display: none;
+    }
+    
+    /* Adjust button sizes */
+    .btn {
+        font-size: 13px;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .btn-sm {
+        font-size: 11px;
+        padding: 0.25rem 0.5rem;
+    }
+}
+
+/* Extra small devices (up to 374px) */
+@media (max-width: 374px) {
+    .login-container {
+        padding: var(--spacing-sm);
+    }
+    
+    .login-card {
+        padding: var(--spacing-md);
+    }
+    
+    .content-body {
+        padding: var(--spacing-sm);
+    }
+    
+    .stats-grid {
+        gap: var(--spacing-sm);
+    }
+    
+    .dashboard-grid {
+        gap: var(--spacing-sm);
+    }
+    
+    .stats-card {
+        flex-direction: column;
+        text-align: center;
+        padding: var(--spacing-sm);
+    }
+    
+    .stats-icon {
+        margin-right: 0;
+        margin-bottom: var(--spacing-sm);
+    }
+}
+
+/* Print Styles */
+@media print {
+    .sidebar,
+    .content-header,
+    .btn,
+    .notification-container {
+        display: none !important;
+    }
+    
+    .main-content {
+        margin-left: 0;
+    }
+    
+    .content-body {
+        padding: 0;
+    }
+    
+    .card,
+    .stats-card {
+        box-shadow: none;
+        border: 1px solid #ccc;
+        break-inside: avoid;
+    }
+    
+    .page-content {
+        display: block !important;
+    }
+}
+
+/* High DPI / Retina Display Optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .sidebar-header .logo h2 {
+        font-weight: 600;
+    }
+    
+    .menu-text {
+        font-weight: 500;
+    }
+    
+    .stats-info h3 {
+        font-weight: 600;
+    }
+}
+
+/* Reduced Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Dark Mode Support (Future Enhancement) */
+@media (prefers-color-scheme: dark) {
+    /* This would be implemented later if needed */
+}
+
+/* Landscape Orientation Specific */
+@media (orientation: landscape) and (max-height: 600px) {
+    .login-page {
+        padding: var(--spacing-sm);
+    }
+    
+    .login-card {
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+}
+
+/* Focus and Accessibility */
+@media (prefers-reduced-motion: no-preference) {
+    .btn:focus,
+    .menu-link:focus,
+    input:focus,
+    select:focus,
+    textarea:focus {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+}
+
+/* Touch Device Optimizations */
+@media (pointer: coarse) {
+    .btn {
+        min-height: 44px;
+        padding: 0.75rem 1rem;
+    }
+    
+    .btn-sm {
+        min-height: 38px;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .menu-link {
+        padding: 1rem var(--spacing-lg);
+    }
+    
+    .notification-bell {
+        padding: var(--spacing-md);
+    }
+    
+    .table-actions .btn {
+        min-height: 36px;
+        padding: 0.5rem 0.75rem;
+    }
+}
